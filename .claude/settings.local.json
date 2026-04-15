@@ -31,7 +31,13 @@
       "Bash(find . -type f -name \"*.go\" -exec wc -l {} +)",
       "Bash(git init:*)",
       "Bash(git remote:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git config:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }
