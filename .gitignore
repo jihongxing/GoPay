@@ -1,0 +1,64 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.out
+coverage.html
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.air.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Certificates (敏感文件)
+certs/
+*.pem
+*.key
+*.crt
+
+# Database
+*.db
+*.sqlite
+
+# Docker volumes
+docker/data/
+
+# Temporary files
+tmp/
+temp/
+
+# Build artifacts
+*.tar.gz
+*.zip

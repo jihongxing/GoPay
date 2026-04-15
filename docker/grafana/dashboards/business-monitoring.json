@@ -1,0 +1,183 @@
+{
+  "dashboard": {
+    "title": "GoPay 业务监控",
+    "tags": ["gopay", "business"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "各渠道订单分布",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum(gopay_orders_total) by (channel)",
+            "legendFormat": "{{channel}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "各渠道支付金额",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum(gopay_payments_amount_total) by (channel)",
+            "legendFormat": "{{channel}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 0
+        }
+      },
+      {
+        "id": 3,
+        "title": "订单状态分布",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum(gopay_orders_total) by (status)",
+            "legendFormat": "{{status}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 0
+        }
+      },
+      {
+        "id": 4,
+        "title": "订单创建耗时 (P50/P95/P99)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(gopay_orders_duration_seconds_bucket[5m])) by (le, channel))",
+            "legendFormat": "{{channel}} P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(gopay_orders_duration_seconds_bucket[5m])) by (le, channel))",
+            "legendFormat": "{{channel}} P95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(gopay_orders_duration_seconds_bucket[5m])) by (le, channel))",
+            "legendFormat": "{{channel}} P99"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        }
+      },
+      {
+        "id": 5,
+        "title": "回调处理耗时 (P50/P95/P99)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(gopay_webhooks_duration_seconds_bucket[5m])) by (le, channel))",
+            "legendFormat": "{{channel}} P50"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(gopay_webhooks_duration_seconds_bucket[5m])) by (le, channel))",
+            "legendFormat": "{{channel}} P95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(gopay_webhooks_duration_seconds_bucket[5m])) by (le, channel))",
+            "legendFormat": "{{channel}} P99"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        }
+      },
+      {
+        "id": 6,
+        "title": "回调失败率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(gopay_webhooks_total{status=\"failed\"}[5m])) by (channel) / sum(rate(gopay_webhooks_total[5m])) by (channel) * 100",
+            "legendFormat": "{{channel}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        }
+      },
+      {
+        "id": 7,
+        "title": "回调重试次数",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(gopay_webhooks_retries_total[5m])) by (channel)",
+            "legendFormat": "{{channel}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 16
+        }
+      },
+      {
+        "id": 8,
+        "title": "对账差异数",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "gopay_reconciliation_mismatches",
+            "legendFormat": "{{channel}} - {{type}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 24
+        }
+      },
+      {
+        "id": 9,
+        "title": "Provider 缓存命中率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(gopay_provider_cache_hits_total[5m])) / (sum(rate(gopay_provider_cache_hits_total[5m])) + sum(rate(gopay_provider_cache_misses_total[5m]))) * 100",
+            "legendFormat": "命中率 %"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 24
+        }
+      }
+    ],
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  }
+}

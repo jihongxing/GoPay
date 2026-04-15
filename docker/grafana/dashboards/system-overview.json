@@ -1,0 +1,184 @@
+{
+  "dashboard": {
+    "title": "GoPay 系统概览",
+    "tags": ["gopay", "overview"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "订单总数",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(gopay_orders_total)",
+            "legendFormat": "总订单数"
+          }
+        ],
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "支付成功数",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(gopay_payments_total)",
+            "legendFormat": "支付成功数"
+          }
+        ],
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        }
+      },
+      {
+        "id": 3,
+        "title": "支付成功率",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "sum(gopay_payments_total) / sum(gopay_orders_total) * 100",
+            "legendFormat": "成功率 %"
+          }
+        ],
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        }
+      },
+      {
+        "id": 4,
+        "title": "活跃连接数",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "gopay_active_connections",
+            "legendFormat": "连接数"
+          }
+        ],
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        }
+      },
+      {
+        "id": 5,
+        "title": "订单创建趋势",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(gopay_orders_total[5m])) by (channel)",
+            "legendFormat": "{{channel}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 4
+        }
+      },
+      {
+        "id": 6,
+        "title": "支付成功趋势",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(gopay_payments_total[5m])) by (channel)",
+            "legendFormat": "{{channel}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 4
+        }
+      },
+      {
+        "id": 7,
+        "title": "HTTP 请求 QPS",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(gopay_http_requests_total[1m]))",
+            "legendFormat": "QPS"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 12
+        }
+      },
+      {
+        "id": 8,
+        "title": "HTTP 响应时间 (P95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(gopay_http_request_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "P95"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 12
+        }
+      },
+      {
+        "id": 9,
+        "title": "错误率",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(gopay_errors_total[5m])) by (type)",
+            "legendFormat": "{{type}}"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 20
+        }
+      },
+      {
+        "id": 10,
+        "title": "数据库查询时间 (P95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(gopay_db_query_duration_seconds_bucket[5m])) by (le))",
+            "legendFormat": "P95"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 20
+        }
+      }
+    ],
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  }
+}

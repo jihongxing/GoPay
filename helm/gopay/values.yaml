@@ -1,0 +1,149 @@
+# Default values for gopay
+# This is a YAML-formatted file.
+
+# 副本数
+replicaCount: 2
+
+# 镜像配置
+image:
+  repository: gopay
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# 服务账户
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod 注解
+podAnnotations: {}
+
+# Pod 安全上下文
+podSecurityContext:
+  fsGroup: 1000
+
+# 容器安全上下文
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# 服务配置
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# Ingress 配置
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: gopay.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: gopay-tls
+  #    hosts:
+  #      - gopay.example.com
+
+# 资源限制
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# 自动扩缩容
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# 节点选择器
+nodeSelector: {}
+
+# 容忍度
+tolerations: []
+
+# 亲和性
+affinity: {}
+
+# 健康检查
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# 环境变量
+env:
+  - name: SERVER_PORT
+    value: "8080"
+  - name: LOG_LEVEL
+    value: "info"
+
+# 从 Secret 加载的环境变量
+envFrom:
+  - secretRef:
+      name: gopay-secrets
+
+# PostgreSQL 配置
+postgresql:
+  enabled: true
+  auth:
+    username: gopay
+    password: gopay_password
+    database: gopay
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+# ConfigMap 配置
+configMap:
+  data:
+    DB_HOST: gopay-postgresql
+    DB_PORT: "5432"
+    DB_NAME: gopay
+    DB_SSLMODE: require
+
+# Secret 配置（需要手动创建）
+# kubectl create secret generic gopay-secrets \
+#   --from-literal=DB_USER=gopay \
+#   --from-literal=DB_PASSWORD=your_password \
+#   --from-literal=MASTER_KEY=your_master_key

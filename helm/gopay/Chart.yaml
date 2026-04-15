@@ -1,0 +1,17 @@
+apiVersion: v2
+name: gopay
+description: A lightweight payment gateway for Go
+type: application
+version: 2.0.0
+appVersion: "2.0.0"
+keywords:
+  - payment
+  - gateway
+  - wechat
+  - alipay
+home: https://github.com/yourusername/gopay
+sources:
+  - https://github.com/yourusername/gopay
+maintainers:
+  - name: GoPay Team
+    email: your-email@example.com

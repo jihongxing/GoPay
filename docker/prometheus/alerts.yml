@@ -1,0 +1,158 @@
+# Prometheus 告警规则
+
+groups:
+  - name: gopay_alerts
+    interval: 30s
+    rules:
+      # 订单创建失败率过高
+      - alert: HighOrderFailureRate
+        expr: |
+          (
+            sum(rate(gopay_orders_total{status="failed"}[5m]))
+            /
+            sum(rate(gopay_orders_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: order
+        annotations:
+          summary: "订单创建失败率过高"
+          description: "过去 5 分钟订单创建失败率超过 10%"
+
+      # 支付成功率过低
+      - alert: LowPaymentSuccessRate
+        expr: |
+          (
+            sum(rate(gopay_payments_total[5m]))
+            /
+            sum(rate(gopay_orders_total[5m]))
+          ) < 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: payment
+        annotations:
+          summary: "支付成功率过低"
+          description: "过去 10 分钟支付成功率低于 80%"
+
+      # 回调失败率过高
+      - alert: HighWebhookFailureRate
+        expr: |
+          (
+            sum(rate(gopay_webhooks_total{status="failed"}[5m]))
+            /
+            sum(rate(gopay_webhooks_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: webhook
+        annotations:
+          summary: "回调失败率过高"
+          description: "过去 5 分钟回调失败率超过 5%"
+
+      # 回调重试次数过多
+      - alert: HighWebhookRetries
+        expr: rate(gopay_webhooks_retries_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: webhook
+        annotations:
+          summary: "回调重试次数过多"
+          description: "过去 5 分钟回调重试次数超过 10 次/秒"
+
+      # 对账发现差异
+      - alert: ReconciliationMismatch
+        expr: gopay_reconciliation_mismatches > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: reconciliation
+        annotations:
+          summary: "对账发现差异"
+          description: "对账发现 {{ $value }} 笔差异订单"
+
+      # HTTP 请求错误率过高
+      - alert: HighHTTPErrorRate
+        expr: |
+          (
+            sum(rate(gopay_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(gopay_http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: http
+        annotations:
+          summary: "HTTP 请求错误率过高"
+          description: "过去 5 分钟 HTTP 5xx 错误率超过 5%"
+
+      # 响应时间过长
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(gopay_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "响应时间过长"
+          description: "P95 响应时间超过 1 秒"
+
+      # 数据库查询慢
+      - alert: SlowDatabaseQueries
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(gopay_db_query_duration_seconds_bucket[5m])) by (le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "数据库查询慢"
+          description: "P95 数据库查询时间超过 0.5 秒"
+
+      # 服务不可用
+      - alert: ServiceDown
+        expr: up{job="gopay"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: service
+        annotations:
+          summary: "GoPay 服务不可用"
+          description: "GoPay 服务已停止响应"
+
+      # 内存使用率过高
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            process_resident_memory_bytes{job="gopay"}
+            /
+            node_memory_MemTotal_bytes
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "内存使用率过高"
+          description: "内存使用率超过 80%"
+
+      # CPU 使用率过高
+      - alert: HighCPUUsage
+        expr: |
+          rate(process_cpu_seconds_total{job="gopay"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "CPU 使用率过高"
+          description: "CPU 使用率超过 80%"

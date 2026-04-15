@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>失败订单管理 - GoPay</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header h1 { font-size: 24px; color: #333; }
+        .filters { background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
+        .filters input, .filters select { padding: 8px 12px; margin-right: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .filters button { padding: 8px 16px; background: #1890ff; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+        .filters button:hover { background: #40a9ff; }
+        .table-container { background: #fff; padding: 20px; border-radius: 8px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+        th { background: #fafafa; font-weight: 600; color: #333; }
+        .status-failed { color: #ff4d4f; }
+        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #1890ff; color: #fff; }
+        .btn-primary:hover { background: #40a9ff; }
+        .btn-danger { background: #ff4d4f; color: #fff; }
+        .pagination { margin-top: 20px; text-align: center; }
+        .pagination a { display: inline-block; padding: 8px 12px; margin: 0 4px; border: 1px solid #d9d9d9; border-radius: 4px; color: #333; text-decoration: none; }
+        .pagination a.active { background: #1890ff; color: #fff; border-color: #1890ff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>失败订单管理</h1>
+        </div>
+
+        <div class="filters">
+            <form method="GET" action="/admin/failed-orders">
+                <select name="channel">
+                    <option value="">全部渠道</option>
+                    <option value="wechat_native">微信 Native</option>
+                    <option value="wechat_jsapi">微信 JSAPI</option>
+                    <option value="alipay_qr">支付宝扫码</option>
+                    <option value="alipay_wap">支付宝 Wap</option>
+                </select>
+                <input type="date" name="start_date" placeholder="开始日期">
+                <input type="date" name="end_date" placeholder="结束日期">
+                <button type="submit">查询</button>
+                <button type="button" onclick="batchRetry()" class="btn-danger">批量重试</button>
+            </form>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
+                        <th>订单号</th>
+                        <th>商户订单号</th>
+                        <th>金额</th>
+                        <th>渠道</th>
+                        <th>失败原因</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .orders}}
+                    <tr>
+                        <td><input type="checkbox" class="order-checkbox" value="{{.OrderNo}}"></td>
+                        <td>{{.OrderNo}}</td>
+                        <td>{{.OutTradeNo}}</td>
+                        <td>¥{{.Amount}}</td>
+                        <td>{{.Channel}}</td>
+                        <td class="status-failed">{{.FailReason}}</td>
+                        <td>{{.CreatedAt}}</td>
+                        <td>
+                            <button class="btn btn-primary" onclick="retryOrder('{{.OrderNo}}')">重试</button>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+
+            <div class="pagination">
+                <a href="?page=1">首页</a>
+                <a href="?page={{.prevPage}}">上一页</a>
+                <a href="?page={{.page}}" class="active">{{.page}}</a>
+                <a href="?page={{.nextPage}}">下一页</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.order-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+        }
+
+        function retryOrder(orderNo) {
+            if (!confirm('确定要重试该订单吗？')) return;
+
+            fetch(`/admin/retry-order/${orderNo}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    alert(data.message);
+                    if (data.success) location.reload();
+                })
+                .catch(err => alert('重试失败: ' + err));
+        }
+
+        function batchRetry() {
+            const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert('请选择要重试的订单');
+                return;
+            }
+
+            if (!confirm(`确定要重试选中的 ${checkboxes.length} 个订单吗？`)) return;
+
+            const orderNos = Array.from(checkboxes).map(cb => cb.value);
+
+            fetch('/admin/batch-retry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_nos: orderNos })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    alert(`成功: ${data.success_count}, 失败: ${data.failed_count}`);
+                    location.reload();
+                })
+                .catch(err => alert('批量重试失败: ' + err));
+        }
+    </script>
+</body>
+</html>

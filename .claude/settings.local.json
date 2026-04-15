@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod:*)",
+      "Bash(GOPROXY=https://goproxy.cn,direct go mod tidy)",
+      "Bash(go build:*)",
+      "Bash(GOPROXY=https://goproxy.cn,direct go get github.com/wechatpay-apiv3/wechatpay-go)",
+      "Read(//d/codeSpace/**)",
+      "Bash(mkdir -p GoPay-Example-Shop)",
+      "Bash(mkdir:*)",
+      "Bash(npm install:*)",
+      "Bash(node:*)",
+      "Bash(ls:*)",
+      "Bash(curl -s http://localhost:8080/health)",
+      "Bash(chmod +x:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(./bin/gopay:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(podman:*)",
+      "Bash(python -m json.tool)",
+      "Bash(curl:*)",
+      "Bash(go test:*)",
+      "WebSearch",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(go doc:*)",
+      "Bash(xargs wc:*)",
+      "Bash(go get:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(cloc --include-lang=Go --exclude-dir=vendor,bin .)",
+      "Bash(find . -type f -name \"*.go\" -exec wc -l {} +)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
