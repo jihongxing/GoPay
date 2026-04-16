@@ -3,13 +3,16 @@ package wechat
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wechatpay-apiv3/wechatpay-go/core/auth/verifiers"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/downloader"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/notify"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/refunddomestic"
 	"gopay/pkg/channel"
 	"gopay/pkg/logger"
 )
@@ -59,6 +62,46 @@ func (h *WebhookHandler) HandleWebhook(ctx context.Context, req *channel.Webhook
 	httpReq.Header.Set("Wechatpay-Nonce", req.Headers["Wechatpay-Nonce"])
 	httpReq.Header.Set("Wechatpay-Signature", req.Headers["Wechatpay-Signature"])
 	httpReq.Header.Set("Wechatpay-Serial", req.Headers["Wechatpay-Serial"])
+
+	var envelope struct {
+		EventType string `json:"event_type"`
+	}
+	if err := json.Unmarshal(req.RawBody, &envelope); err != nil {
+		logger.Error("Failed to inspect wechat webhook event: %v", err)
+		return &channel.WebhookResponse{
+			Success:      false,
+			ResponseBody: []byte(`{"code":"FAIL","message":"签名验证失败"}`),
+		}, nil
+	}
+
+	if strings.Contains(strings.ToUpper(envelope.EventType), "REFUND") {
+		refund := new(refunddomestic.Refund)
+		_, err = h.handler.ParseNotifyRequest(ctx, httpReq, refund)
+		if err != nil {
+			logger.Error("Wechat refund webhook verification failed: %v", err)
+			return &channel.WebhookResponse{
+				Success:      false,
+				ResponseBody: []byte(`{"code":"FAIL","message":"签名验证失败"}`),
+			}, nil
+		}
+
+		resp := &channel.WebhookResponse{
+			Success:         true,
+			PlatformTradeNo: valueOrEmpty(refund.OutTradeNo),
+			Status:          channel.OrderStatusRefund,
+			ResponseBody:    []byte(`{"code":"SUCCESS","message":"成功"}`),
+		}
+		if refund.SuccessTime != nil {
+			resp.PaidAt = *refund.SuccessTime
+		} else if refund.CreateTime != nil {
+			resp.PaidAt = *refund.CreateTime
+		}
+		if refund.Amount != nil && refund.Amount.Refund != nil {
+			resp.PaidAmount = *refund.Amount.Refund
+		}
+		logger.Info("Wechat refund webhook processed: outTradeNo=%s", resp.PlatformTradeNo)
+		return resp, nil
+	}
 
 	// 使用官方 SDK 验证签名并解密
 	// ParseNotifyRequest 会自动：
@@ -117,4 +160,11 @@ func mapTradeState(tradeState string) channel.OrderStatus {
 	default:
 		return channel.OrderStatusPending
 	}
+}
+
+func valueOrEmpty(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

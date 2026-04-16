@@ -124,19 +124,43 @@ func (p *Provider) HandleWebhook(ctx context.Context, req *channel.WebhookReques
 		}, nil
 	}
 
-	// 解析回调通知
-	notification, err := p.client.DecodeNotification(values)
-	if err != nil {
-		logger.Error("Failed to decode alipay notification: %v", err)
+	// 验证签名
+	if err := p.client.VerifySign(values); err != nil {
+		logger.Error("Failed to verify alipay signature: %v", err)
 		return &channel.WebhookResponse{
 			Success:      false,
 			ResponseBody: []byte("failure"),
 		}, nil
 	}
 
-	// 验证签名
-	if err := p.client.VerifySign(values); err != nil {
-		logger.Error("Failed to verify alipay signature: %v", err)
+	if refundStatus := values.Get("refund_status"); refundStatus != "" {
+		outTradeNo := values.Get("out_trade_no")
+		outRequestNo := values.Get("out_request_no")
+		resp := &channel.WebhookResponse{
+			Success:         true,
+			PlatformTradeNo: outTradeNo,
+			Status:          channel.OrderStatusRefund,
+			ResponseBody:    []byte("success"),
+		}
+		if refundFee := values.Get("refund_fee"); refundFee != "" {
+			resp.PaidAmount = parseAmount(refundFee)
+		}
+		if gmtRefundPay := values.Get("gmt_refund_pay"); gmtRefundPay != "" {
+			if paidAt, err := time.Parse("2006-01-02 15:04:05", gmtRefundPay); err == nil {
+				resp.PaidAt = paidAt
+			}
+		}
+		if outRequestNo != "" {
+			resp.PlatformRefundNo = outRequestNo
+		}
+		logger.Info("Alipay refund webhook handled: outTradeNo=%s, refundStatus=%s", outTradeNo, refundStatus)
+		return resp, nil
+	}
+
+	// 解析回调通知
+	notification, err := p.client.DecodeNotification(values)
+	if err != nil {
+		logger.Error("Failed to decode alipay notification: %v", err)
 		return &channel.WebhookResponse{
 			Success:      false,
 			ResponseBody: []byte("failure"),

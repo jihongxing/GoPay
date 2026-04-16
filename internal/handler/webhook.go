@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gopay/internal/models"
@@ -113,6 +114,25 @@ func WechatWebhook(c *gin.Context) {
 
 		// 铁律一：事务提交后，异步通知业务系统
 		notifyService.NotifyAsync(order)
+	}
+
+	if webhookResp.Status == channel.OrderStatusRefund {
+		refundAt := webhookResp.PaidAt
+		if refundAt.IsZero() {
+			refundAt = time.Now()
+		}
+		err = orderService.UpdateOrderStatus(
+			c.Request.Context(),
+			order.OrderNo,
+			string(webhookResp.Status),
+			&refundAt,
+			webhookResp.PaidAmount,
+		)
+		if err != nil {
+			logger.Error("Failed to update refund status: %v", err)
+			c.Data(http.StatusOK, "application/json", webhookResp.ResponseBody)
+			return
+		}
 	}
 
 	logger.Info("Webhook processed successfully: orderNo=%s", order.OrderNo)
@@ -227,6 +247,25 @@ func AlipayWebhook(c *gin.Context) {
 
 		// 异步通知业务系统
 		notifyService.NotifyAsync(order)
+	}
+
+	if webhookResp.Status == channel.OrderStatusRefund {
+		refundAt := webhookResp.PaidAt
+		if refundAt.IsZero() {
+			refundAt = time.Now()
+		}
+		err = orderService.UpdateOrderStatus(
+			c.Request.Context(),
+			order.OrderNo,
+			string(webhookResp.Status),
+			&refundAt,
+			webhookResp.PaidAmount,
+		)
+		if err != nil {
+			logger.Error("Failed to update refund status: %v", err)
+			c.Data(http.StatusOK, "text/plain", webhookResp.ResponseBody)
+			return
+		}
 	}
 
 	logger.Info("Webhook processed successfully: orderNo=%s", order.OrderNo)

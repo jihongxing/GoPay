@@ -66,13 +66,15 @@ type WebhookRequest struct {
 
 // WebhookResponse Webhook 响应
 type WebhookResponse struct {
-	Success         bool        // 是否成功
-	OrderID         string      // GoPay 内部订单 ID
-	PlatformTradeNo string      // 第三方平台交易号
-	Status          OrderStatus // 订单状态
-	PaidAmount      int64       // 实付金额（分）
-	PaidAt          time.Time   // 支付时间
-	ResponseBody    []byte      // 返回给支付平台的响应体
+	Success          bool        // 是否成功
+	OrderID          string      // GoPay 内部订单 ID
+	PlatformTradeNo  string      // 第三方平台交易号
+	RefundNo         string      // 商户退款单号
+	PlatformRefundNo string      // 第三方退款单号
+	Status           OrderStatus // 订单状态
+	PaidAmount       int64       // 实付金额（分）
+	PaidAt           time.Time   // 支付时间
+	ResponseBody     []byte      // 返回给支付平台的响应体
 }
 
 // RefundRequest 退款请求
