@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -55,16 +56,30 @@ func (r *AlipayReconciler) Reconcile(ctx context.Context, date time.Time) (*Reco
 func (r *AlipayReconciler) parseBill(data []byte) ([]BillRecord, error) {
 	var records []BillRecord
 
-	reader := csv.NewReader(io.Reader(nil)) // TODO: 实现 CSV 读取
+	if len(data) == 0 {
+		return records, nil
+	}
+
+	// 创建 CSV reader
+	reader := csv.NewReader(strings.NewReader(string(data)))
 	reader.Comma = ','
+	reader.LazyQuotes = true // 允许不规范的引号
+	reader.TrimLeadingSpace = true
+	reader.FieldsPerRecord = -1 // 允许可变字段数
 
 	// 支付宝账单格式：
-	// 交易号,商户订单号,交易金额,交易状态,交易时间
+	// 交易号,商户订单号,交易创建时间,付款时间,最近修改时间,交易来源地,类型,交易对方,商品名称,金额（元）,收支,交易状态,服务费（元）,成功退款（元）,备注,资金状态
 
-	// 跳过表头
-	_, err := reader.Read()
-	if err != nil {
-		return nil, err
+	// 跳过表头（支付宝账单前5行是说明，第6行是表头）
+	for i := 0; i < 6; i++ {
+		_, err := reader.Read()
+		if err == io.EOF {
+			// 如果文件行数不足6行，返回空结果
+			return records, nil
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	for {
@@ -77,18 +92,29 @@ func (r *AlipayReconciler) parseBill(data []byte) ([]BillRecord, error) {
 		}
 
 		// 解析每一行
+		if len(row) < 12 {
+			continue
+		}
+
 		record := BillRecord{
-			TransactionID: row[0],
-			OrderNo:       row[1],
-			// Amount:        parseAmountYuan(row[2]), // 支付宝使用元
-			Status:  row[3],
-			Channel: "alipay",
+			TransactionID: row[0],  // 交易号
+			OrderNo:       row[1],  // 商户订单号
+			Amount:        parseAlipayAmount(row[9]), // 金额（元）
+			Status:        row[11], // 交易状态
+			Channel:       "alipay",
 		}
 
 		records = append(records, record)
 	}
 
 	return records, nil
+}
+
+// parseAlipayAmount 解析支付宝金额（元转分）
+func parseAlipayAmount(amountStr string) int64 {
+	var amount float64
+	fmt.Sscanf(amountStr, "%f", &amount)
+	return int64(amount * 100)
 }
 
 // compare 比对内外部数据
@@ -155,7 +181,31 @@ func NewAlipayBillDownloader() *AlipayBillDownloader {
 }
 
 func (d *AlipayBillDownloader) Download(ctx context.Context, date time.Time) ([]byte, error) {
-	// TODO: 调用支付宝 API 下载账单
+	// 调用支付宝 API 下载账单
 	// https://opendocs.alipay.com/open/028wob
-	return nil, nil
+	//
+	// 实现步骤：
+	// 1. 构建请求参数（账单日期、账单类型等）
+	// 2. 使用应用私钥签名请求
+	// 3. 调用支付宝 API
+	// 4. 下载并解析账单文件
+	//
+	// 示例代码：
+	// billDate := date.Format("2006-01-02")
+	// req := alipay.NewAlipayDataDataserviceBillDownloadurlQueryRequest()
+	// req.BizContent = fmt.Sprintf(`{
+	//     "bill_type": "trade",
+	//     "bill_date": "%s"
+	// }`, billDate)
+	//
+	// resp, err := client.Execute(req)
+	// if err != nil {
+	//     return nil, fmt.Errorf("download bill failed: %w", err)
+	// }
+	//
+	// // 下载账单文件
+	// billData, err := downloadBillFile(resp.BillDownloadUrl)
+	// return billData, err
+
+	return nil, fmt.Errorf("alipay bill download not implemented: please integrate alipay SDK")
 }

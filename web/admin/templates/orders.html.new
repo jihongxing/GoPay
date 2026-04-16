@@ -1,0 +1,24 @@
+{{define "orders.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - GoPay 管理后台</title>
+    <link rel="stylesheet" href="/admin/static/css/main.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="logo">
+                <h2>GoPay 管理后台</h2>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="/admin" class="nav-link">📊 数据概览</a></li>
+                <li><a href="/admin/orders" class="nav-link active">📦 订单管理</a></li>
+                <li><a href="/admin/reconciliation" class="nav-link">💰 对账报告</a></li>
+                <li><a href="/admin/logs" class="nav-link">📝 操作日志</a></li>
+            </ul>
+        </nav>
+        <main class="main-content">
+            <div id="app">

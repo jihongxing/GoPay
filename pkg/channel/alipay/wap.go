@@ -47,8 +47,8 @@ func (p *WapProvider) CreateOrder(ctx context.Context, req *channel.CreateOrderR
 			TotalAmount: formatAmount(req.Amount),
 			ProductCode: "QUICK_WAP_WAY",
 		},
-		NotifyURL: req.NotifyURL,
 	}
+	wapReq.NotifyURL = req.NotifyURL
 
 	// 可选参数：商品描述
 	if req.Description != "" {

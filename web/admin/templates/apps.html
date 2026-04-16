@@ -1,0 +1,468 @@
+{{define "apps.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - GoPay 管理后台</title>
+    <link rel="stylesheet" href="/admin/static/css/main.css">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>GoPay 管理后台</h2>
+            </div>
+            <nav class="nav">
+                <a href="/admin" class="nav-item">
+                    <span class="icon">📊</span>
+                    <span>数据概览</span>
+                </a>
+                <a href="/admin/orders" class="nav-item">
+                    <span class="icon">📦</span>
+                    <span>订单管理</span>
+                </a>
+                <a href="/admin/apps" class="nav-item active">
+                    <span class="icon">🔧</span>
+                    <span>应用管理</span>
+                </a>
+                <a href="/admin/config-logs" class="nav-item">
+                    <span class="icon">📜</span>
+                    <span>配置日志</span>
+                </a>
+                <a href="/admin/reconciliation" class="nav-item">
+                    <span class="icon">📋</span>
+                    <span>对账报告</span>
+                </a>
+                <a href="/admin/logs" class="nav-item">
+                    <span class="icon">📝</span>
+                    <span>操作日志</span>
+                </a>
+            </nav>
+        </aside>
+        <main class="main-content">
+            <div id="app">
+                <div class="page-header">
+                    <h1>应用管理</h1>
+                    <button class="btn btn-primary" onclick="showCreateModal()">+ 新增应用</button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="statusFilter" onchange="loadApps()">
+                        <option value="">全部状态</option>
+                        <option value="active">启用</option>
+                        <option value="disabled">禁用</option>
+                    </select>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>App ID</th>
+                                <th>应用名称</th>
+                                <th>回调地址</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="appsTable">
+                            <tr>
+                                <td colspan="6" class="text-center">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 创建/编辑应用模态框 -->
+    <div id="appModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">新增应用</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="appForm">
+                    <div class="form-group">
+                        <label>App ID *</label>
+                        <input type="text" id="appId" name="app_id" required>
+                    </div>
+                    <div class="form-group">
+                        <label>应用名称 *</label>
+                        <input type="text" id="appName" name="app_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>App Secret *</label>
+                        <input type="text" id="appSecret" name="app_secret" required>
+                        <small>用于签名验证，请妥善保管</small>
+                    </div>
+                    <div class="form-group">
+                        <label>回调地址 *</label>
+                        <input type="url" id="callbackUrl" name="callback_url" required>
+                        <small>支付成功后的异步通知地址</small>
+                    </div>
+                    <div class="form-group">
+                        <label>状态</label>
+                        <select id="status" name="status">
+                            <option value="active">启用</option>
+                            <option value="disabled">禁用</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveApp()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let editingAppId = null;
+
+        // 加载应用列表
+        async function loadApps() {
+            const status = document.getElementById('statusFilter').value;
+            const response = await fetch(`/admin/api/apps?page=${currentPage}&page_size=20&status=${status}`);
+            const result = await response.json();
+
+            if (result.code === 'SUCCESS') {
+                renderApps(result.data.apps);
+                renderPagination(result.data.total, result.data.page, result.data.page_size);
+            }
+        }
+
+        // 渲染应用列表
+        function renderApps(apps) {
+            const tbody = document.getElementById('appsTable');
+            if (!apps || apps.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">暂无数据</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = apps.map(app => `
+                <tr>
+                    <td><code>${app.app_id}</code></td>
+                    <td>${app.app_name}</td>
+                    <td><small>${app.callback_url}</small></td>
+                    <td><span class="badge ${app.status === 'active' ? 'badge-success' : 'badge-secondary'}">${app.status === 'active' ? '启用' : '禁用'}</span></td>
+                    <td>${new Date(app.created_at).toLocaleString('zh-CN')}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="viewChannels('${app.app_id}')">渠道配置</button>
+                        <button class="btn btn-sm btn-secondary" onclick="editApp('${app.app_id}')">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteApp('${app.app_id}')">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 渲染分页
+        function renderPagination(total, page, pageSize) {
+            const totalPages = Math.ceil(total / pageSize);
+            const pagination = document.getElementById('pagination');
+
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+
+            let html = `<span>共 ${total} 条</span>`;
+            if (page > 1) {
+                html += `<button onclick="changePage(${page - 1})">上一页</button>`;
+            }
+            html += `<span>第 ${page} / ${totalPages} 页</span>`;
+            if (page < totalPages) {
+                html += `<button onclick="changePage(${page + 1})">下一页</button>`;
+            }
+            pagination.innerHTML = html;
+        }
+
+        // 切换页码
+        function changePage(page) {
+            currentPage = page;
+            loadApps();
+        }
+
+        // 显示创建模态框
+        function showCreateModal() {
+            editingAppId = null;
+            document.getElementById('modalTitle').textContent = '新增应用';
+            document.getElementById('appForm').reset();
+            document.getElementById('appId').disabled = false;
+            document.getElementById('appModal').style.display = 'block';
+        }
+
+        // 编辑应用
+        async function editApp(appId) {
+            const response = await fetch(`/admin/api/apps/${appId}`);
+            const result = await response.json();
+
+            if (result.code === 'SUCCESS') {
+                editingAppId = appId;
+                const app = result.data;
+                document.getElementById('modalTitle').textContent = '编辑应用';
+                document.getElementById('appId').value = app.app_id;
+                document.getElementById('appId').disabled = true;
+                document.getElementById('appName').value = app.app_name;
+                document.getElementById('appSecret').value = '';
+                document.getElementById('appSecret').placeholder = '不修改请留空';
+                document.getElementById('callbackUrl').value = app.callback_url;
+                document.getElementById('status').value = app.status;
+                document.getElementById('appModal').style.display = 'block';
+            }
+        }
+
+        // 保存应用
+        async function saveApp() {
+            const form = document.getElementById('appForm');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            const data = {
+                app_id: document.getElementById('appId').value,
+                app_name: document.getElementById('appName').value,
+                app_secret: document.getElementById('appSecret').value,
+                callback_url: document.getElementById('callbackUrl').value,
+                status: document.getElementById('status').value
+            };
+
+            let url, method;
+            if (editingAppId) {
+                url = `/admin/api/apps/${editingAppId}`;
+                method = 'PUT';
+                // 编辑时，如果密钥为空则不更新
+                if (!data.app_secret) {
+                    delete data.app_secret;
+                }
+            } else {
+                url = '/admin/api/apps';
+                method = 'POST';
+            }
+
+            const response = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (result.code === 'SUCCESS') {
+                alert(editingAppId ? '更新成功' : '创建成功');
+                closeModal();
+                loadApps();
+            } else {
+                alert('操作失败: ' + result.message);
+            }
+        }
+
+        // 删除应用
+        async function deleteApp(appId) {
+            if (!confirm(`确定要删除应用 ${appId} 吗？`)) {
+                return;
+            }
+
+            const response = await fetch(`/admin/api/apps/${appId}`, {method: 'DELETE'});
+            const result = await response.json();
+
+            if (result.code === 'SUCCESS') {
+                alert('删除成功');
+                loadApps();
+            } else {
+                alert('删除失败: ' + result.message);
+            }
+        }
+
+        // 查看渠道配置
+        function viewChannels(appId) {
+            window.location.href = `/admin/apps/${appId}/channels`;
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            document.getElementById('appModal').style.display = 'none';
+        }
+
+        // 页面加载时初始化
+        window.onload = function() {
+            loadApps();
+        };
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('appModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        };
+    </script>
+
+    <style>
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .filter-bar {
+            margin-bottom: 20px;
+        }
+
+        .filter-bar select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            text-align: right;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .badge-success {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .badge-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .pagination {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .pagination button {
+            margin: 0 5px;
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background-color: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .pagination button:hover {
+            background-color: #f8f9fa;
+        }
+    </style>
+</body>
+</html>
+{{end}}

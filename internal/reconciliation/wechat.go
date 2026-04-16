@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -55,7 +56,12 @@ func (r *WechatReconciler) Reconcile(ctx context.Context, date time.Time) (*Reco
 func (r *WechatReconciler) parseBill(data []byte) ([]BillRecord, error) {
 	var records []BillRecord
 
-	reader := csv.NewReader(io.Reader(nil)) // TODO: 实现 CSV 读取
+	if len(data) == 0 {
+		return records, nil
+	}
+
+	// 创建 CSV reader
+	reader := csv.NewReader(strings.NewReader(string(data)))
 	reader.Comma = ','
 
 	// 跳过表头
@@ -74,18 +80,30 @@ func (r *WechatReconciler) parseBill(data []byte) ([]BillRecord, error) {
 		}
 
 		// 解析每一行
+		// 微信账单格式：交易时间,公众账号ID,商户号,特约商户号,设备号,微信订单号,商户订单号,用户标识,交易类型,交易状态,付款银行,货币种类,应结订单金额,代金券金额,微信退款单号,商户退款单号,退款金额,充值券退款金额,退款类型,退款状态,商品名称,商户数据包,手续费,费率,订单金额,申请退款金额,费率备注
+		if len(row) < 8 {
+			continue
+		}
+
 		record := BillRecord{
-			TransactionID: row[0],
-			OrderNo:       row[1],
-			// Amount:        parseAmount(row[2]),
-			Status:  row[3],
-			Channel: "wechat",
+			TransactionID: row[5], // 微信订单号
+			OrderNo:       row[6], // 商户订单号
+			Amount:        parseWechatAmount(row[12]), // 应结订单金额
+			Status:        row[9], // 交易状态
+			Channel:       "wechat",
 		}
 
 		records = append(records, record)
 	}
 
 	return records, nil
+}
+
+// parseWechatAmount 解析微信金额（元转分）
+func parseWechatAmount(amountStr string) int64 {
+	var amount float64
+	fmt.Sscanf(amountStr, "%f", &amount)
+	return int64(amount * 100)
 }
 
 // compare 比对内外部数据
@@ -152,9 +170,31 @@ func NewWechatBillDownloader() *WechatBillDownloader {
 }
 
 func (d *WechatBillDownloader) Download(ctx context.Context, date time.Time) ([]byte, error) {
-	// TODO: 调用微信 API 下载账单
+	// 调用微信 API 下载账单
 	// https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_6.shtml
-	return nil, nil
+	//
+	// 实现步骤：
+	// 1. 构建请求参数（账单日期、账单类型等）
+	// 2. 使用商户证书签名请求
+	// 3. 调用微信支付 API
+	// 4. 下载并解密账单文件
+	//
+	// 示例代码：
+	// billDate := date.Format("2006-01-02")
+	// req := &downloadbill.GetTradeBillRequest{
+	//     BillDate: core.String(billDate),
+	//     BillType: core.String("ALL"),
+	// }
+	// resp, result, err := billService.GetTradeBill(ctx, req)
+	// if err != nil {
+	//     return nil, fmt.Errorf("download bill failed: %w", err)
+	// }
+	//
+	// // 下载账单文件
+	// billData, err := downloadBillFile(resp.DownloadUrl)
+	// return billData, err
+
+	return nil, fmt.Errorf("wechat bill download not implemented: please integrate wechatpay-go SDK")
 }
 
 // OrderRepository 订单仓储接口
@@ -169,6 +209,7 @@ type Order struct {
 	PaidAt  time.Time
 }
 
+// NewOrderRepository 创建订单仓储
 func NewOrderRepository() OrderRepository {
 	return &orderRepository{}
 }
@@ -176,6 +217,7 @@ func NewOrderRepository() OrderRepository {
 type orderRepository struct{}
 
 func (r *orderRepository) GetOrdersByDate(ctx context.Context, date time.Time, channel string) ([]Order, error) {
-	// TODO: 从数据库查询订单
-	return nil, nil
+	// 这个方法需要在初始化时注入数据库连接
+	// 当前返回空列表，实际使用时需要通过构造函数注入 *sql.DB
+	return []Order{}, nil
 }

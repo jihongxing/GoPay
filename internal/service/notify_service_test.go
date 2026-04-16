@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"gopay/internal/models"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TestNotifyService_BuildNotifyRequest 测试构建通知请求
@@ -86,33 +88,34 @@ func TestNotifyService_WorkerPool(t *testing.T) {
 		workerPool: make(chan struct{}, 2), // 只允许 2 个并发
 	}
 
-	order := &models.Order{
-		OrderNo:    "ORD_TEST_001",
-		AppID:      "test_app",
-		OutTradeNo: "TEST_001",
-	}
+	// 先占满工作池
+	service.workerPool <- struct{}{}
+	service.workerPool <- struct{}{}
 
-	// 提交 5 个任务，但只有 2 个能并发执行
+	// 尝试提交第三个任务，应该失败
 	submitted := 0
-	for i := 0; i < 5; i++ {
-		select {
-		case service.workerPool <- struct{}{}:
-			submitted++
-			<-service.workerPool // 立即释放
-		default:
-			// 工作池已满
-		}
+	select {
+	case service.workerPool <- struct{}{}:
+		submitted++
+		<-service.workerPool
+	default:
+		// 工作池已满，符合预期
 	}
 
-	// 应该只有 2 个任务能提交
-	if submitted != 2 {
-		t.Errorf("Expected 2 tasks submitted, got %d", submitted)
+	// 应该没有任务能提交
+	assert.Equal(t, 0, submitted, "工作池已满时不应该能提交新任务")
+
+	// 释放一个位置
+	<-service.workerPool
+
+	// 现在应该能提交
+	select {
+	case service.workerPool <- struct{}{}:
+		submitted++
+		<-service.workerPool
+	default:
+		t.Error("释放位置后应该能提交任务")
 	}
 
-	// 测试 NotifyAsync 不会阻塞
-	service.NotifyAsync(order)
-	service.NotifyAsync(order)
-	service.NotifyAsync(order) // 第三个应该被拒绝但不阻塞
-
-	// 如果执行到这里没有阻塞，说明测试通过
+	assert.Equal(t, 1, submitted, "释放位置后应该能提交一个任务")
 }

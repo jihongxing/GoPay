@@ -47,8 +47,8 @@ func (p *AppProvider) CreateOrder(ctx context.Context, req *channel.CreateOrderR
 			TotalAmount: formatAmount(req.Amount),
 			ProductCode: "QUICK_MSECURITY_PAY",
 		},
-		NotifyURL: req.NotifyURL,
 	}
+	appReq.NotifyURL = req.NotifyURL
 
 	// 可选参数：商品描述
 	if req.Description != "" {

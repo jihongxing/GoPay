@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - GoPay 管理后台</title>
+    <link rel="stylesheet" href="/admin/static/css/main.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            <div class="logo">
+                <h2>GoPay 管理后台</h2>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="/admin" class="nav-link" data-page="dashboard">📊 数据概览</a></li>
+                <li><a href="/admin/orders" class="nav-link" data-page="orders">📦 订单管理</a></li>
+                <li><a href="/admin/reconciliation" class="nav-link" data-page="reconciliation">💰 对账报告</a></li>
+                <li><a href="/admin/logs" class="nav-link" data-page="logs">📝 操作日志</a></li>
+            </ul>
+        </nav>
+        <main class="main-content">
+            <div id="app">
+                {{template "content" .}}
+            </div>
+        </main>
+    </div>
+    <script src="/admin/static/js/api.js"></script>
+    <script src="/admin/static/js/utils.js"></script>
+    <script src="/admin/static/js/app.js"></script>
+</body>
+</html>

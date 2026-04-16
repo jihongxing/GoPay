@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // App 应用表模型
 type App struct {
@@ -109,3 +112,87 @@ const (
 	TransactionTypePayment = "payment"
 	TransactionTypeRefund  = "refund"
 )
+
+// ConfigAuditLog 配置变更审计日志表模型
+type ConfigAuditLog struct {
+	ID           int64     `json:"id" db:"id"`
+	Operator     string    `json:"operator" db:"operator"`
+	Action       string    `json:"action" db:"action"`
+	ResourceType string    `json:"resource_type" db:"resource_type"`
+	ResourceID   string    `json:"resource_id" db:"resource_id"`
+	OldValue     string    `json:"old_value" db:"old_value"` // JSONB 存储为字符串
+	NewValue     string    `json:"new_value" db:"new_value"` // JSONB 存储为字符串
+	IPAddress    string    `json:"ip_address" db:"ip_address"`
+	UserAgent    string    `json:"user_agent" db:"user_agent"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+}
+
+// 审计日志操作类型常量
+const (
+	AuditActionCreate  = "create"
+	AuditActionUpdate  = "update"
+	AuditActionDelete  = "delete"
+	AuditActionDisable = "disable"
+)
+
+// 审计日志资源类型常量
+const (
+	AuditResourceApp           = "app"
+	AuditResourceChannelConfig = "channel_config"
+)
+
+// IsPaid 判断订单是否已支付
+func (o *Order) IsPaid() bool {
+	return o.Status == OrderStatusPaid && o.PaidAt != nil
+}
+
+// Validate 验证订单字段
+func (o *Order) Validate() error {
+	if o.Amount <= 0 {
+		return fmt.Errorf("amount must be greater than 0")
+	}
+	if o.Subject == "" {
+		return fmt.Errorf("subject is required")
+	}
+	if o.AppID == "" {
+		return fmt.Errorf("app_id is required")
+	}
+	if o.OutTradeNo == "" {
+		return fmt.Errorf("out_trade_no is required")
+	}
+	if o.Channel == "" {
+		return fmt.Errorf("channel is required")
+	}
+	return nil
+}
+
+// ValidateApp 验证应用字段
+func (a *App) Validate() error {
+	if a.AppID == "" {
+		return fmt.Errorf("app_id is required")
+	}
+	if a.AppName == "" {
+		return fmt.Errorf("app_name is required")
+	}
+	if a.AppSecret == "" {
+		return fmt.Errorf("app_secret is required")
+	}
+	if a.CallbackURL == "" {
+		return fmt.Errorf("callback_url is required")
+	}
+	return nil
+}
+
+// ValidateChannelConfig 验证渠道配置字段
+func (c *ChannelConfig) Validate() error {
+	if c.AppID == "" {
+		return fmt.Errorf("app_id is required")
+	}
+	if c.Channel == "" {
+		return fmt.Errorf("channel is required")
+	}
+	if c.Config == "" {
+		return fmt.Errorf("config is required")
+	}
+	return nil
+}

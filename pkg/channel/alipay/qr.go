@@ -40,15 +40,15 @@ func (p *QRProvider) CreateOrder(ctx context.Context, req *channel.CreateOrderRe
 	logger.Info("Creating alipay QR order: orderID=%s, amount=%d", req.OrderID, req.Amount)
 
 	// 构建请求参数
-	qrReq := alipay.TradePrecreate{
+	qrReq := alipay.TradePreCreate{
 		Trade: alipay.Trade{
 			Subject:     req.Subject,
 			OutTradeNo:  req.BizOrderNo,
 			TotalAmount: formatAmount(req.Amount),
 			ProductCode: "FACE_TO_FACE_PAYMENT",
 		},
-		NotifyURL: req.NotifyURL,
 	}
+	qrReq.NotifyURL = req.NotifyURL
 
 	// 可选参数：商品描述
 	if req.Description != "" {
@@ -56,7 +56,7 @@ func (p *QRProvider) CreateOrder(ctx context.Context, req *channel.CreateOrderRe
 	}
 
 	// 调用支付宝预下单接口
-	resp, err := p.client.TradePrecreate(ctx, qrReq)
+	resp, err := p.client.TradePreCreate(ctx, qrReq)
 	if err != nil {
 		logger.Error("Failed to create alipay QR order: %v", err)
 		return nil, fmt.Errorf("alipay QR precreate failed: %w", err)

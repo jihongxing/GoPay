@@ -40,6 +40,9 @@
 - ✅ **多业务隔离**: 一套商户号对应多个业务系统，配置独立
 - ✅ **统一接口**: 业务系统无需关心底层渠道差异
 - ✅ **异步回调**: 支持 HTTP 回调，带超时和重试机制
+- ✅ **T+1 对账**: 自动下载账单、比对差异、生成报告
+- ✅ **管理后台**: Web 界面管理订单、查看对账报告、操作日志
+- ✅ **数据可视化**: 订单趋势图、渠道分布图、实时统计
 - ✅ **安全可靠**: AES-256-GCM 加密存储密钥，签名验证防伪造
 - ✅ **高性能**: 单机支持 10k+ QPS，响应时间 < 5ms
 - ✅ **易部署**: Docker Compose 一键部署
@@ -93,8 +96,53 @@ make db-up
 cp .env.example .env
 
 # 编辑 .env 文件，填入你的配置
-# 必填项：
-# - DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+```
+
+#### 必填配置项
+
+**数据库配置**
+```bash
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=gopay
+DB_PASSWORD=your_secure_password
+DB_NAME=gopay
+```
+
+**主密钥（用于加密商户密钥）**
+```bash
+# 生成方法: openssl rand -base64 32
+MASTER_KEY=your-master-key-change-in-production
+```
+
+**管理后台认证**
+```bash
+# 生成方法: openssl rand -base64 32
+ADMIN_API_KEY=your-admin-api-key
+# IP 白名单（可选，逗号分隔）
+ADMIN_IP_WHITELIST=127.0.0.1,192.168.1.100
+```
+
+**支付宝配置**
+```bash
+ALIPAY_APP_ID=your_alipay_app_id
+ALIPAY_APP_PRIVATE_KEY=your_alipay_private_key
+ALIPAY_PUBLIC_KEY=alipay_public_key
+ALIPAY_GATEWAY_URL=https://openapi.alipay.com/gateway.do
+```
+
+**微信支付配置**
+```bash
+WECHAT_MCH_ID=your_mch_id
+WECHAT_APP_ID=your_app_id
+WECHAT_API_V3_KEY=your_32_character_api_v3_key
+WECHAT_SERIAL_NO=your_certificate_serial_number
+WECHAT_PRIVATE_KEY_PATH=certs/wechat/apiclient_key.pem
+WECHAT_CERT_PATH=certs/wechat/apiclient_cert.pem
+WECHAT_NOTIFY_URL=https://your-domain.com/api/v1/webhook/wechat
+```
+
+> 📖 完整配置说明请查看 `.env.example` 文件
 # - MASTER_KEY (用于加密商户密钥)
 ```
 
@@ -143,24 +191,19 @@ curl -X POST http://localhost:8080/api/v1/checkout \
 
 ## 📖 文档
 
-### 用户文档
-- [快速开始指南](docs/guides/quickstart.md)
-- [配置指南](docs/guides/configuration.md)
-- [接入指南](docs/guides/integration.md)
-- [部署指南](docs/guides/deployment.md)
-- [常见问题 FAQ](docs/faq.md)
+### 🚀 快速开始
+- [配置指南](docs/配置指南.md) - **详细的配置说明和获取方法**
+- [部署前检查清单](DEPLOYMENT_CHECKLIST.md) - **生产环境部署必读**
+- [管理后台启动指南](docs/管理后台启动指南.md) - 管理后台使用说明
+- [对账系统使用指南](docs/对账系统使用指南.md) - 对账功能说明
 
-### 技术文档
-- [API 接口文档](docs/api/README.md)
-- [架构设计](docs/architecture/overview.md)
-- [数据库设计](docs/architecture/database.md)
-- [故障排查](docs/troubleshooting.md)
+### 🔒 安全文档
+- [安全修复报告](SECURITY_FIX_REPORT.md) - 安全审计和修复详情
+- [密钥轮换指南](docs/密钥轮换指南.md) - 密钥轮换操作手册
 
-### 开发文档
-- [开发环境搭建](docs/development/setup.md)
-- [贡献指南](CONTRIBUTING.md)
-- [测试指南](docs/development/testing.md)
-- [扩展开发指南](docs/development/extending.md)
+### 📚 技术文档
+- [技术架构文档](docs/GoPay%20统一支付网关%20-%20技术架构与实施方案.md) - 架构设计和实施方案
+- [项目状态报告](docs/PROJECT_STATUS.md) - 当前实现状态和进度
 
 ---
 
@@ -347,17 +390,30 @@ docker run -d \
 - **响应时间**: < 5ms（网关内部逻辑，不含网络 I/O）
 - **并发能力**: 10k+ QPS（单机）
 - **可用性**: 99.9%+
-- **测试覆盖率**: 80%+
+- **测试覆盖率**: 
+  - 核心配置模块: 92.3%
+  - 数据模型: 75.0%
+  - Handler 层: 47.4%
+  - 对账系统: 38.3%
+  - 业务服务: 22.5%
+  - 安全模块: 48.9%
+  - 总体覆盖率: 47.4%（持续改进中）
 
 ---
 
 ## 🔒 安全特性
 
 - **密钥加密**: 使用 AES-256-GCM 加密存储商户密钥
-- **签名验证**: 所有回调通知进行签名验证，防止伪造
+- **签名验证**: 使用官方 SDK 验证 Webhook RSA-SHA256 签名，防止伪造
 - **金额校验**: 回调时验证金额一致性，防止篡改
 - **幂等处理**: 数据库唯一索引 + 行锁，防止重复处理
 - **超时控制**: HTTP 回调强制 3 秒超时，避免资源占用
+- **管理后台认证**: API Key + IP 白名单双重保护
+- **密钥轮换**: 提供密钥轮换工具，建议每 90 天轮换
+- **依赖扫描**: CI/CD 集成 govulncheck 自动扫描漏洞
+- **安全迁移**: 使用 golang-migrate 进行版本化数据库迁移
+
+> 📖 详细安全配置请查看 [SECURITY_FIX_REPORT.md](SECURITY_FIX_REPORT.md) 和 [密钥轮换指南](docs/密钥轮换指南.md)
 
 ---
 
@@ -382,18 +438,25 @@ docker run -d \
 - [x] 多业务隔离
 - [x] 异步回调机制
 - [x] Docker 部署
+- [x] 核心模块单元测试
+- [x] 订单模型测试
+- [x] 配置管理测试
+- [x] T+1 自动对账系统
+- [x] 管理后台 API（订单管理、通知重试、对账报告）
+- [x] Handler 层集成测试
 
 ### 🚧 进行中
-- [ ] 单元测试覆盖率提升
-- [ ] API 文档完善
-- [ ] 示例项目
+- [ ] 提升测试覆盖率（目标 80%+，当前 47.4%）
+- [ ] 支付渠道集成测试
+- [ ] 管理后台前端界面
 
 ### 📅 计划中
-- [ ] T+1 自动对账
-- [ ] 管理后台
+- [ ] 退款功能
 - [ ] 银联支付
 - [ ] Stripe 支付
 - [ ] Prometheus 监控
+- [ ] Grafana 监控面板
+- [ ] 告警通知（钉钉/飞书）
 - [ ] Kubernetes Helm Chart
 
 ---

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>操作日志 - GoPay 管理后台</title>
+    <link rel="stylesheet" href="/admin/static/css/main.css">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>GoPay 管理后台</h2>
+            </div>
+            <nav class="nav">
+                <a href="/admin" class="nav-item">
+                    <span class="icon">📊</span>
+                    <span>数据概览</span>
+                </a>
+                <a href="/admin/orders" class="nav-item">
+                    <span class="icon">📦</span>
+                    <span>订单管理</span>
+                </a>
+                <a href="/admin/apps" class="nav-item">
+                    <span class="icon">🔧</span>
+                    <span>应用管理</span>
+                </a>
+                <a href="/admin/config-logs" class="nav-item">
+                    <span class="icon">📜</span>
+                    <span>配置日志</span>
+                </a>
+                <a href="/admin/reconciliation" class="nav-item">
+                    <span class="icon">📋</span>
+                    <span>对账报告</span>
+                </a>
+                <a href="/admin/logs" class="nav-item active">
+                    <span class="icon">📝</span>
+                    <span>操作日志</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div class="logs-page">
+                <div class="page-header">
+                    <h1>操作日志</h1>
+                </div>
+
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>操作类型</label>
+                        <select id="filter-action" onchange="applyFilters()">
+                            <option value="">全部</option>
+                            <option value="retry_order">重试订单</option>
+                            <option value="batch_retry">批量重试</option>
+                            <option value="retry_webhook">重试回调</option>
+                            <option value="view_order">查看订单</option>
+                            <option value="view_report">查看报告</option>
+                            <option value="download_report">下载报告</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>操作人</label>
+                        <input type="text" id="filter-operator" placeholder="输入操作人" onchange="applyFilters()">
+                    </div>
+
+                    <div class="filter-group">
+                        <label>开始日期</label>
+                        <input type="date" id="filter-start-date" onchange="applyFilters()">
+                    </div>
+
+                    <div class="filter-group">
+                        <label>结束日期</label>
+                        <input type="date" id="filter-end-date" onchange="applyFilters()">
+                    </div>
+
+                    <button class="btn" onclick="resetFilters()">重置</button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>操作时间</th>
+                                <th>操作人</th>
+                                <th>操作类型</th>
+                                <th>操作目标</th>
+                                <th>IP 地址</th>
+                                <th>User Agent</th>
+                                <th>操作结果</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-tbody">
+                            <tr>
+                                <td colspan="7" class="loading">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/static/js/utils.js"></script>
+    <script src="/admin/static/js/api.js"></script>
+    <script>
+let currentPage = 1;
+let currentFilters = {};
+
+async function loadLogs(page = 1) {
+    currentPage = page;
+
+    // 模拟数据（实际应该从后端 API 获取）
+    const mockLogs = generateMockLogs();
+    renderLogs(mockLogs);
+    renderPagination(mockLogs.length, page, 20);
+}
+
+function generateMockLogs() {
+    // 这是模拟数据，实际应该调用 API
+    const actions = ['retry_order', 'batch_retry', 'retry_webhook', 'view_order', 'view_report'];
+    const operators = ['admin', 'system', 'operator1'];
+    const logs = [];
+
+    for (let i = 0; i < 20; i++) {
+        const date = new Date();
+        date.setHours(date.getHours() - i);
+
+        logs.push({
+            id: i + 1,
+            created_at: date.toISOString(),
+            operator: operators[Math.floor(Math.random() * operators.length)],
+            action: actions[Math.floor(Math.random() * actions.length)],
+            target: `ORDER_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+            ip: `192.168.1.${Math.floor(Math.random() * 255)}`,
+            user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            result: Math.random() > 0.1 ? 'success' : 'failed'
+        });
+    }
+
+    return logs;
+}
+
+function renderLogs(logs) {
+    const tbody = document.getElementById('logs-tbody');
+    if (logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = logs.map(log => `
+        <tr>
+            <td>${formatTime(log.created_at)}</td>
+            <td>${log.operator}</td>
+            <td>${formatAction(log.action)}</td>
+            <td>${log.target}</td>
+            <td>${log.ip}</td>
+            <td title="${log.user_agent}" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${log.user_agent}</td>
+            <td><span class="badge badge-${log.result === 'success' ? 'success' : 'error'}">${log.result === 'success' ? '成功' : '失败'}</span></td>
+        </tr>
+    `).join('');
+}
+
+function renderPagination(total, page, pageSize) {
+    const totalPages = Math.ceil(total / pageSize);
+    const pagination = document.getElementById('pagination');
+
+    if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+
+    let html = `<span>共 ${total} 条</span>`;
+
+    if (page > 1) {
+        html += `<button class="btn btn-sm" onclick="loadLogs(${page - 1})">上一页</button>`;
+    }
+
+    html += `<span>第 ${page} / ${totalPages} 页</span>`;
+
+    if (page < totalPages) {
+        html += `<button class="btn btn-sm" onclick="loadLogs(${page + 1})">下一页</button>`;
+    }
+
+    pagination.innerHTML = html;
+}
+
+function formatAction(action) {
+    const map = {
+        'retry_order': '重试订单',
+        'batch_retry': '批量重试',
+        'retry_webhook': '重试回调',
+        'view_order': '查看订单',
+        'view_report': '查看报告',
+        'download_report': '下载报告'
+    };
+    return map[action] || action;
+}
+
+function applyFilters() {
+    currentFilters = {
+        action: document.getElementById('filter-action').value,
+        operator: document.getElementById('filter-operator').value,
+        start_date: document.getElementById('filter-start-date').value,
+        end_date: document.getElementById('filter-end-date').value
+    };
+
+    Object.keys(currentFilters).forEach(key => {
+        if (!currentFilters[key]) delete currentFilters[key];
+    });
+
+    loadLogs(1);
+}
+
+function resetFilters() {
+    document.getElementById('filter-action').value = '';
+    document.getElementById('filter-operator').value = '';
+    document.getElementById('filter-start-date').value = '';
+    document.getElementById('filter-end-date').value = '';
+    currentFilters = {};
+    loadLogs(1);
+}
+
+loadLogs(1);
+    </script>
+</body>
+</html>

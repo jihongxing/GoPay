@@ -1,0 +1,255 @@
+{{define "dashboard.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - GoPay 管理后台</title>
+    <link rel="stylesheet" href="/admin/static/css/main.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>GoPay 管理后台</h2>
+            </div>
+            <nav class="nav">
+                <a href="/admin" class="nav-item active">
+                    <span class="icon">📊</span>
+                    <span>数据概览</span>
+                </a>
+                <a href="/admin/orders" class="nav-item">
+                    <span class="icon">📦</span>
+                    <span>订单管理</span>
+                </a>
+                <a href="/admin/apps" class="nav-item">
+                    <span class="icon">🔧</span>
+                    <span>应用管理</span>
+                </a>
+                <a href="/admin/config-logs" class="nav-item">
+                    <span class="icon">📜</span>
+                    <span>配置日志</span>
+                </a>
+                <a href="/admin/reconciliation" class="nav-item">
+                    <span class="icon">📋</span>
+                    <span>对账报告</span>
+                </a>
+                <a href="/admin/logs" class="nav-item">
+                    <span class="icon">📝</span>
+                    <span>操作日志</span>
+                </a>
+            </nav>
+        </aside>
+        <main class="main-content">
+            <div id="app">
+                <div class="dashboard">
+                    <h1>数据概览</h1>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">📦</div>
+                            <div class="stat-info">
+                                <div class="stat-label">今日订单</div>
+                                <div class="stat-value" id="today-orders">-</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon">✅</div>
+                            <div class="stat-info">
+                                <div class="stat-label">成功订单</div>
+                                <div class="stat-value" id="success-orders">-</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card warning">
+                            <div class="stat-icon">❌</div>
+                            <div class="stat-info">
+                                <div class="stat-label">失败订单</div>
+                                <div class="stat-value" id="failed-orders">-</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon">🔔</div>
+                            <div class="stat-info">
+                                <div class="stat-label">通知失败</div>
+                                <div class="stat-value" id="failed-notifications">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>最近 7 天订单趋势</h3>
+                            <canvas id="orders-chart"></canvas>
+                        </div>
+
+                        <div class="chart-card">
+                            <h3>支付渠道分布</h3>
+                            <canvas id="channel-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="recent-section">
+                        <h3>最近失败订单</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>订单号</th>
+                                    <th>商户订单号</th>
+                                    <th>金额</th>
+                                    <th>渠道</th>
+                                    <th>状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-failed-orders">
+                                <tr>
+                                    <td colspan="7" class="loading">加载中...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="/admin/static/js/api.js"></script>
+    <script src="/admin/static/js/utils.js"></script>
+    <script src="/admin/static/js/app.js"></script>
+    <script>
+let ordersChart = null;
+let channelChart = null;
+
+// 加载数据概览
+async function loadDashboard() {
+    try {
+        // 加载统计数据
+        const stats = await API.getStats();
+        document.getElementById('today-orders').textContent = stats.today_orders || 0;
+        document.getElementById('success-orders').textContent = stats.success_orders || 0;
+        document.getElementById('failed-orders').textContent = stats.failed_orders || 0;
+        document.getElementById('failed-notifications').textContent = stats.failed_notifications || 0;
+
+        // 加载最近失败订单
+        const ordersResponse = await API.getFailedOrders({ page: 1, page_size: 5 });
+        renderRecentFailedOrders(ordersResponse.orders || []);
+
+        // 初始化图表
+        initCharts();
+    } catch (error) {
+        console.error('加载数据失败:', error);
+        showError('加载数据失败');
+    }
+}
+
+// 初始化图表
+function initCharts() {
+    // 订单趋势图
+    const ordersCtx = document.getElementById('orders-chart');
+    if (ordersCtx && !ordersChart) {
+        ordersChart = new Chart(ordersCtx, {
+            type: 'line',
+            data: {
+                labels: getLast7Days(),
+                datasets: [{
+                    label: '订单数',
+                    data: generateMockData(7, 50, 200),
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // 渠道分布图
+    const channelCtx = document.getElementById('channel-chart');
+    if (channelCtx && !channelChart) {
+        channelChart = new Chart(channelCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['微信支付', '支付宝'],
+                datasets: [{
+                    data: [60, 40],
+                    backgroundColor: ['#2ecc71', '#3498db']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+}
+
+function getLast7Days() {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        days.push(`${date.getMonth() + 1}/${date.getDate()}`);
+    }
+    return days;
+}
+
+function generateMockData(count, min, max) {
+    return Array.from({ length: count }, () =>
+        Math.floor(Math.random() * (max - min + 1)) + min
+    );
+}
+
+function renderRecentFailedOrders(orders) {
+    const tbody = document.getElementById('recent-failed-orders');
+    if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无失败订单</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = orders.map(order => `
+        <tr>
+            <td>${order.order_no}</td>
+            <td>${order.out_trade_no}</td>
+            <td>¥${(order.amount / 100).toFixed(2)}</td>
+            <td>${formatChannel(order.channel)}</td>
+            <td><span class="badge badge-error">${formatStatus(order.status)}</span></td>
+            <td>${formatTime(order.created_at)}</td>
+            <td>
+                <button class="btn btn-sm" onclick="viewOrder('${order.order_no}')">查看</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function viewOrder(orderNo) {
+    window.location.href = `/admin/orders?order_no=${orderNo}`;
+}
+
+// 页面加载时执行
+loadDashboard();
+    </script>
+</body>
+</html>
+{{end}}

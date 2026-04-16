@@ -62,3 +62,6 @@ temp/
 # Build artifacts
 *.tar.gz
 *.zip
+
+# gstack local data (user-specific, not project files)
+.gstack/

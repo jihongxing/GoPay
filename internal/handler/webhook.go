@@ -134,19 +134,114 @@ func parseOutTradeNoFromWechatWebhook(body []byte) (string, error) {
 
 // findOrderByOutTradeNo 通过 out_trade_no 查找订单
 func findOrderByOutTradeNo(ctx context.Context, outTradeNo string) (*models.Order, error) {
-	// 注意：这里需要遍历所有可能的 app_id 来查找订单
-	// 更好的做法是在 webhook body 中包含 app_id，或者使用全局唯一的 out_trade_no
-	// 这里简化实现，假设 out_trade_no 在系统中是唯一的
-
-	// 调用 orderService 查询订单（需要添加不带 app_id 的查询方法）
-	// 暂时返回错误，提示需要实现
-	return nil, fmt.Errorf("findOrderByOutTradeNo: need to implement QueryOrderByOutTradeNoGlobal method")
+	// 注意：这里假设 out_trade_no 在系统中是全局唯一的
+	// 如果不是，需要在 webhook body 中包含 app_id
+	return orderService.QueryOrderByOutTradeNoGlobal(ctx, outTradeNo)
 }
 
 // AlipayWebhook 支付宝回调
 func AlipayWebhook(c *gin.Context) {
 	logger.Info("Received alipay webhook")
 
-	// TODO: 实现支付宝 Webhook 处理
-	c.JSON(http.StatusOK, gin.H{"code": "SUCCESS", "message": "成功"})
+	// 读取原始请求体
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		logger.Error("Failed to read webhook body: %v", err)
+		c.String(http.StatusOK, "failure")
+		return
+	}
+
+	// 获取请求头
+	headers := make(map[string]string)
+	for key := range c.Request.Header {
+		headers[key] = c.Request.Header.Get(key)
+	}
+
+	// 构建 Webhook 请求
+	webhookReq := &channel.WebhookRequest{
+		RawBody: body,
+		Headers: headers,
+	}
+
+	// 从 webhook body 中解析 out_trade_no
+	outTradeNo, err := parseOutTradeNoFromAlipayWebhook(body)
+	if err != nil {
+		logger.Error("Failed to parse out_trade_no from webhook: %v", err)
+		c.String(http.StatusOK, "failure")
+		return
+	}
+
+	// 通过 out_trade_no 查询订单获取 app_id
+	order, err := findOrderByOutTradeNo(c.Request.Context(), outTradeNo)
+	if err != nil {
+		logger.Error("Failed to find order by out_trade_no: %v", err)
+		c.String(http.StatusOK, "failure")
+		return
+	}
+
+	appID := order.AppID
+	channelName := order.Channel
+
+	// 获取正确的支付渠道 Provider（用于签名验证）
+	provider, err := channelManager.GetProvider(appID, channelName)
+	if err != nil {
+		logger.Error("Failed to get payment provider: %v", err)
+		c.String(http.StatusOK, "failure")
+		return
+	}
+
+	// 调用 Provider 处理 Webhook（包含签名验证）
+	webhookResp, err := provider.HandleWebhook(c.Request.Context(), webhookReq)
+	if err != nil {
+		logger.Error("Failed to handle webhook: %v", err)
+		c.String(http.StatusOK, "failure")
+		return
+	}
+
+	if !webhookResp.Success {
+		logger.Error("Webhook verification failed")
+		c.Data(http.StatusOK, "text/plain", webhookResp.ResponseBody)
+		return
+	}
+
+	logger.Info("Webhook verified: platformTradeNo=%s, status=%s", webhookResp.PlatformTradeNo, webhookResp.Status)
+
+	// 更新订单状态（使用行锁）
+	if webhookResp.Status == channel.OrderStatusPaid {
+		err = orderService.UpdateOrderStatus(
+			c.Request.Context(),
+			order.OrderNo,
+			string(webhookResp.Status),
+			&webhookResp.PaidAt,
+			webhookResp.PaidAmount,
+		)
+		if err != nil {
+			logger.Error("Failed to update order status: %v", err)
+			c.Data(http.StatusOK, "text/plain", webhookResp.ResponseBody)
+			return
+		}
+
+		// 异步通知业务系统
+		notifyService.NotifyAsync(order)
+	}
+
+	logger.Info("Webhook processed successfully: orderNo=%s", order.OrderNo)
+
+	// 返回成功响应给支付宝
+	c.Data(http.StatusOK, "text/plain", webhookResp.ResponseBody)
+}
+
+// parseOutTradeNoFromAlipayWebhook 从支付宝 webhook body 中解析 out_trade_no
+func parseOutTradeNoFromAlipayWebhook(body []byte) (string, error) {
+	// 支付宝回调是 form 格式，需要解析
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return "", err
+	}
+
+	if outTradeNo, ok := data["out_trade_no"].(string); ok {
+		return outTradeNo, nil
+	}
+
+	return "", fmt.Errorf("out_trade_no not found in webhook body")
 }

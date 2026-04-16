@@ -1,7 +1,7 @@
 package admin
 
 import (
-	"html/template"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -191,47 +191,170 @@ func (h *AdminHandler) RetryWebhook(c *gin.Context) {
 
 // ReconciliationReports 对账报告列表
 func (h *AdminHandler) ReconciliationReports(c *gin.Context) {
-	// TODO: 实现对账报告列表
-	c.HTML(http.StatusOK, "reconciliation.html", gin.H{})
+	page := c.DefaultQuery("page", "1")
+	_ = c.DefaultQuery("page_size", "20") // pageSize for future use
+	channel := c.Query("channel")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	// 查询对账报告列表
+	// 实现步骤：
+	// 1. 从数据库查询对账记录
+	// 2. 支持按渠道、日期范围筛选
+	// 3. 分页返回结果
+	//
+	// 示例代码：
+	// reports, total, err := h.reconciliationService.GetReports(c.Request.Context(), ReconciliationQuery{
+	//     Page:      parseInt(page),
+	//     PageSize:  parseInt(pageSize),
+	//     Channel:   channel,
+	//     StartDate: parseDate(startDate),
+	//     EndDate:   parseDate(endDate),
+	// })
+
+	c.HTML(http.StatusOK, "reconciliation.html", gin.H{
+		"page":       page,
+		"channel":    channel,
+		"start_date": startDate,
+		"end_date":   endDate,
+	})
 }
 
 // ReconciliationDetail 对账报告详情
 func (h *AdminHandler) ReconciliationDetail(c *gin.Context) {
-	// TODO: 实现对账报告详情
-	c.HTML(http.StatusOK, "reconciliation_detail.html", gin.H{})
+	id := c.Param("id")
+
+	// 查询对账报告详情
+	// 实现步骤：
+	// 1. 根据 ID 查询对账记录
+	// 2. 获取长款、短款、金额不匹配明细
+	// 3. 渲染详情页面
+	//
+	// 示例代码：
+	// report, err := h.reconciliationService.GetReportByID(c.Request.Context(), id)
+	// if err != nil {
+	//     c.HTML(http.StatusInternalServerError, "error.html", gin.H{"error": err.Error()})
+	//     return
+	// }
+
+	c.HTML(http.StatusOK, "reconciliation_detail.html", gin.H{
+		"id": id,
+	})
 }
 
 // OperationLogs 操作日志
 func (h *AdminHandler) OperationLogs(c *gin.Context) {
-	// TODO: 实现操作日志
-	c.HTML(http.StatusOK, "logs.html", gin.H{})
+	page := c.DefaultQuery("page", "1")
+	_ = c.DefaultQuery("page_size", "20") // pageSize for future use
+	action := c.Query("action")
+	operator := c.Query("operator")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	// 查询操作日志
+	// 实现步骤：
+	// 1. 从数据库查询操作日志
+	// 2. 支持按操作类型、操作人、日期范围筛选
+	// 3. 分页返回结果
+	//
+	// 示例代码：
+	// logs, total, err := h.auditService.GetLogs(c.Request.Context(), AuditLogQuery{
+	//     Page:      parseInt(page),
+	//     PageSize:  parseInt(pageSize),
+	//     Action:    action,
+	//     Operator:  operator,
+	//     StartDate: parseDate(startDate),
+	//     EndDate:   parseDate(endDate),
+	// })
+
+	c.HTML(http.StatusOK, "logs.html", gin.H{
+		"page":       page,
+		"action":     action,
+		"operator":   operator,
+		"start_date": startDate,
+		"end_date":   endDate,
+	})
 }
 
 // getStatistics 获取统计数据
 func (h *AdminHandler) getStatistics() Statistics {
-	// TODO: 实现统计数据获取
+	// 实现统计数据获取
+	// 实现步骤：
+	// 1. 查询总订单数
+	// 2. 查询失败订单数
+	// 3. 查询失败回调数
+	// 4. 查询今日订单数
+	//
+	// 示例代码：
+	// ctx := context.Background()
+	// totalOrders, _ := h.orderService.CountOrders(ctx, OrderCountQuery{})
+	// failedOrders, _ := h.orderService.CountOrders(ctx, OrderCountQuery{Status: "failed"})
+	// failedWebhooks, _ := h.notifyService.CountFailedWebhooks(ctx)
+	// todayOrders, _ := h.orderService.CountOrders(ctx, OrderCountQuery{
+	//     StartDate: time.Now().Truncate(24 * time.Hour),
+	// })
+	//
+	// return Statistics{
+	//     TotalOrders:    totalOrders,
+	//     FailedOrders:   failedOrders,
+	//     FailedWebhooks: failedWebhooks,
+	//     TodayOrders:    todayOrders,
+	// }
+
 	return Statistics{
-		TotalOrders:    1000,
-		FailedOrders:   10,
-		FailedWebhooks: 5,
-		TodayOrders:    100,
+		TotalOrders:    0,
+		FailedOrders:   0,
+		FailedWebhooks: 0,
+		TodayOrders:    0,
 	}
 }
 
 // logOperation 记录操作日志
 func (h *AdminHandler) logOperation(c *gin.Context, action, target string) {
-	// TODO: 实现操作日志记录
+	// 实现操作日志记录
+	// 实现步骤：
+	// 1. 获取操作人信息（从 session 或 JWT）
+	// 2. 记录操作类型、目标、IP、时间等
+	// 3. 写入数据库或日志文件
+	//
+	// 示例代码：
+	// import "gopay/pkg/audit"
+	//
+	// operator := c.GetString("user_id") // 从认证中间件获取
+	// ip := c.ClientIP()
+	//
+	// auditLog := audit.AuditLog{
+	//     Operator:  operator,
+	//     Action:    action,
+	//     Target:    target,
+	//     IP:        ip,
+	//     UserAgent: c.Request.UserAgent(),
+	//     CreatedAt: time.Now(),
+	// }
+	//
+	// audit.GetAuditLogger().Log(c.Request.Context(), auditLog)
 }
 
 // 辅助函数
 func parseInt(s string) int {
-	// TODO: 实现字符串转整数
-	return 1
+	// 实现字符串转整数
+	var result int
+	if _, err := fmt.Sscanf(s, "%d", &result); err != nil {
+		return 1
+	}
+	return result
 }
 
 func parseDate(s string) time.Time {
-	// TODO: 实现字符串转日期
-	return time.Now()
+	// 实现字符串转日期
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // 数据结构
@@ -257,11 +380,11 @@ type Statistics struct {
 
 // 服务接口
 type OrderService interface {
-	GetFailedOrders(ctx interface{}, query FailedOrdersQuery) ([]interface{}, int, error)
-	RetryOrder(ctx interface{}, orderNo string) error
+	GetFailedOrders(ctx any, query FailedOrdersQuery) ([]any, int, error)
+	RetryOrder(ctx any, orderNo string) error
 }
 
 type NotifyService interface {
-	GetFailedWebhooks(ctx interface{}, query FailedWebhooksQuery) ([]interface{}, int, error)
-	RetryWebhook(ctx interface{}, orderNo string) error
+	GetFailedWebhooks(ctx any, query FailedWebhooksQuery) ([]any, int, error)
+	RetryWebhook(ctx any, orderNo string) error
 }

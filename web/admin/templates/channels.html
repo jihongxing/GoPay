@@ -1,0 +1,481 @@
+{{define "channels.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - GoPay 管理后台</title>
+    <link rel="stylesheet" href="/admin/static/css/main.css">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>GoPay 管理后台</h2>
+            </div>
+            <nav class="nav">
+                <a href="/admin" class="nav-item">
+                    <span class="icon">📊</span>
+                    <span>数据概览</span>
+                </a>
+                <a href="/admin/orders" class="nav-item">
+                    <span class="icon">📦</span>
+                    <span>订单管理</span>
+                </a>
+                <a href="/admin/apps" class="nav-item">
+                    <span class="icon">🔧</span>
+                    <span>应用管理</span>
+                </a>
+                <a href="/admin/config-logs" class="nav-item">
+                    <span class="icon">📜</span>
+                    <span>配置日志</span>
+                </a>
+                <a href="/admin/reconciliation" class="nav-item">
+                    <span class="icon">📋</span>
+                    <span>对账报告</span>
+                </a>
+                <a href="/admin/logs" class="nav-item">
+                    <span class="icon">📝</span>
+                    <span>操作日志</span>
+                </a>
+            </nav>
+        </aside>
+        <main class="main-content">
+            <div id="app">
+                <div class="breadcrumb">
+                    <a href="/admin/apps">应用管理</a> / <span id="appIdBreadcrumb">渠道配置</span>
+                </div>
+
+                <div class="page-header">
+                    <h1>渠道配置 - <span id="appIdTitle"></span></h1>
+                    <button class="btn btn-primary" onclick="showCreateModal()">+ 新增渠道</button>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="channelFilter" onchange="loadChannels()">
+                        <option value="">全部渠道</option>
+                        <option value="alipay">支付宝</option>
+                        <option value="wechat">微信支付</option>
+                    </select>
+                    <select id="statusFilter" onchange="loadChannels()">
+                        <option value="">全部状态</option>
+                        <option value="active">启用</option>
+                        <option value="disabled">禁用</option>
+                    </select>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>渠道类型</th>
+                                <th>商户号</th>
+                                <th>应用ID</th>
+                                <th>密钥</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="channelsTable">
+                            <tr>
+                                <td colspan="7" class="text-center">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 创建/编辑渠道模态框 -->
+    <div id="channelModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">新增渠道</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="channelForm">
+                    <div class="form-group">
+                        <label>渠道类型 *</label>
+                        <select id="channelType" name="channel_type" required onchange="updateFormFields()">
+                            <option value="">请选择</option>
+                            <option value="alipay">支付宝</option>
+                            <option value="wechat">微信支付</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>商户号 *</label>
+                        <input type="text" id="merchantId" name="merchant_id" required>
+                        <small id="merchantIdHint">支付宝商户号或微信商户号</small>
+                    </div>
+                    <div class="form-group" id="appIdGroup">
+                        <label>应用ID *</label>
+                        <input type="text" id="channelAppId" name="app_id" required>
+                        <small id="appIdHint">支付宝应用ID或微信应用ID</small>
+                    </div>
+                    <div class="form-group">
+                        <label>密钥 *</label>
+                        <textarea id="appSecret" name="app_secret" rows="4" required></textarea>
+                        <small id="secretHint">支付宝应用私钥或微信API密钥</small>
+                    </div>
+                    <div class="form-group" id="publicKeyGroup" style="display:none;">
+                        <label>支付宝公钥</label>
+                        <textarea id="publicKey" name="public_key" rows="4"></textarea>
+                        <small>支付宝公钥（可选）</small>
+                    </div>
+                    <div class="form-group">
+                        <label>状态</label>
+                        <select id="status" name="status">
+                            <option value="active">启用</option>
+                            <option value="disabled">禁用</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveChannel()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const appId = window.location.pathname.split('/')[3];
+        let editingChannelId = null;
+
+        // 更新表单字段提示
+        function updateFormFields() {
+            const channelType = document.getElementById('channelType').value;
+            const publicKeyGroup = document.getElementById('publicKeyGroup');
+
+            if (channelType === 'alipay') {
+                document.getElementById('merchantIdHint').textContent = '支付宝商户号（PID）';
+                document.getElementById('appIdHint').textContent = '支付宝应用ID（APPID）';
+                document.getElementById('secretHint').textContent = '支付宝应用私钥（RSA2）';
+                publicKeyGroup.style.display = 'block';
+            } else if (channelType === 'wechat') {
+                document.getElementById('merchantIdHint').textContent = '微信商户号（mch_id）';
+                document.getElementById('appIdHint').textContent = '微信应用ID（app_id）';
+                document.getElementById('secretHint').textContent = '微信API密钥（api_key）';
+                publicKeyGroup.style.display = 'none';
+            }
+        }
+
+        // 加载渠道列表
+        async function loadChannels() {
+            const channelType = document.getElementById('channelFilter').value;
+            const status = document.getElementById('statusFilter').value;
+            const response = await fetch(`/admin/api/apps/${appId}/channels?channel_type=${channelType}&status=${status}`);
+            const result = await response.json();
+
+            if (result.code === 'SUCCESS') {
+                renderChannels(result.data);
+            }
+        }
+
+        // 渲染渠道列表
+        function renderChannels(channels) {
+            const tbody = document.getElementById('channelsTable');
+            if (!channels || channels.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">暂无数据</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = channels.map(channel => `
+                <tr>
+                    <td><span class="badge ${channel.channel_type === 'alipay' ? 'badge-info' : 'badge-success'}">${channel.channel_type === 'alipay' ? '支付宝' : '微信支付'}</span></td>
+                    <td><code>${channel.merchant_id}</code></td>
+                    <td><code>${channel.app_id || '-'}</code></td>
+                    <td><code>${channel.app_secret}</code></td>
+                    <td><span class="badge ${channel.status === 'active' ? 'badge-success' : 'badge-secondary'}">${channel.status === 'active' ? '启用' : '禁用'}</span></td>
+                    <td>${new Date(channel.created_at).toLocaleString('zh-CN')}</td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick="editChannel(${channel.id})">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteChannel(${channel.id})">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 显示创建模态框
+        function showCreateModal() {
+            editingChannelId = null;
+            document.getElementById('modalTitle').textContent = '新增渠道';
+            document.getElementById('channelForm').reset();
+            document.getElementById('channelType').disabled = false;
+            document.getElementById('channelModal').style.display = 'block';
+        }
+
+        // 编辑渠道
+        async function editChannel(channelId) {
+            const response = await fetch(`/admin/api/channels/${channelId}`);
+            const result = await response.json();
+
+            if (result.code === 'SUCCESS') {
+                editingChannelId = channelId;
+                const channel = result.data;
+                document.getElementById('modalTitle').textContent = '编辑渠道';
+                document.getElementById('channelType').value = channel.channel_type;
+                document.getElementById('channelType').disabled = true;
+                document.getElementById('merchantId').value = channel.merchant_id;
+                document.getElementById('channelAppId').value = channel.app_id || '';
+                document.getElementById('appSecret').value = '';
+                document.getElementById('appSecret').placeholder = '不修改请留空';
+                document.getElementById('publicKey').value = channel.public_key || '';
+                document.getElementById('status').value = channel.status;
+                updateFormFields();
+                document.getElementById('channelModal').style.display = 'block';
+            }
+        }
+
+        // 保存渠道
+        async function saveChannel() {
+            const form = document.getElementById('channelForm');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            const data = {
+                channel_type: document.getElementById('channelType').value,
+                merchant_id: document.getElementById('merchantId').value,
+                app_id: document.getElementById('channelAppId').value,
+                app_secret: document.getElementById('appSecret').value,
+                public_key: document.getElementById('publicKey').value,
+                status: document.getElementById('status').value
+            };
+
+            let url, method;
+            if (editingChannelId) {
+                url = `/admin/api/channels/${editingChannelId}`;
+                method = 'PUT';
+                // 编辑时，如果密钥为空则不更新
+                if (!data.app_secret) {
+                    delete data.app_secret;
+                }
+            } else {
+                url = `/admin/api/apps/${appId}/channels`;
+                method = 'POST';
+            }
+
+            const response = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (result.code === 'SUCCESS') {
+                alert(editingChannelId ? '更新成功' : '创建成功');
+                closeModal();
+                loadChannels();
+            } else {
+                alert('操作失败: ' + result.message);
+            }
+        }
+
+        // 删除渠道
+        async function deleteChannel(channelId) {
+            if (!confirm('确定要删除此渠道配置吗？')) {
+                return;
+            }
+
+            const response = await fetch(`/admin/api/channels/${channelId}`, {method: 'DELETE'});
+            const result = await response.json();
+
+            if (result.code === 'SUCCESS') {
+                alert('删除成功');
+                loadChannels();
+            } else {
+                alert('删除失败: ' + result.message);
+            }
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            document.getElementById('channelModal').style.display = 'none';
+        }
+
+        // 页面加载时初始化
+        window.onload = function() {
+            document.getElementById('appIdTitle').textContent = appId;
+            document.getElementById('appIdBreadcrumb').textContent = appId;
+            loadChannels();
+        };
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('channelModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        };
+    </script>
+
+    <style>
+        .breadcrumb {
+            margin-bottom: 20px;
+            color: #666;
+        }
+
+        .breadcrumb a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .filter-bar {
+            margin-bottom: 20px;
+        }
+
+        .filter-bar select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            text-align: right;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .badge-success {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .badge-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+
+        .badge-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+    </style>
+</body>
+</html>
+{{end}}

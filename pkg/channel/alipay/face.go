@@ -53,10 +53,10 @@ func (p *FaceProvider) CreateOrder(ctx context.Context, req *channel.CreateOrder
 			TotalAmount: formatAmount(req.Amount),
 			ProductCode: "FACE_TO_FACE_PAYMENT",
 		},
-		NotifyURL: req.NotifyURL,
-		AuthCode:  authCode,
-		Scene:     "bar_code", // 条码支付场景
+		AuthCode: authCode,
+		Scene:    "bar_code", // 条码支付场景
 	}
+	faceReq.NotifyURL = req.NotifyURL
 
 	// 可选参数：商品描述
 	if req.Description != "" {
@@ -80,10 +80,10 @@ func (p *FaceProvider) CreateOrder(ctx context.Context, req *channel.CreateOrder
 
 	// 当面付是同步支付，直接返回支付结果
 	return &channel.CreateOrderResponse{
-		PlatformTradeNo: resp.OutTradeNo,
+		PlatformTradeNo: resp.TradeNo,
 		ExtraData: map[string]string{
 			"trade_no":     resp.TradeNo,
-			"trade_status": resp.TradeStatus,
+			"out_trade_no": resp.OutTradeNo,
 			"total_amount": resp.TotalAmount,
 		},
 	}, nil

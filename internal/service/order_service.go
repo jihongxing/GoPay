@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -12,14 +14,19 @@ import (
 	"gopay/pkg/logger"
 )
 
+// ChannelManagerInterface 渠道管理器接口
+type ChannelManagerInterface interface {
+	GetProvider(appID, channelType string) (channel.PaymentChannel, error)
+}
+
 // OrderService 订单服务
 type OrderService struct {
 	db             *sql.DB
-	channelManager *ChannelManager
+	channelManager ChannelManagerInterface
 }
 
 // NewOrderService 创建订单服务
-func NewOrderService(db *sql.DB, channelManager *ChannelManager) *OrderService {
+func NewOrderService(db *sql.DB, channelManager ChannelManagerInterface) *OrderService {
 	return &OrderService{
 		db:             db,
 		channelManager: channelManager,
@@ -87,13 +94,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *CreateOrderRequest)
 		return nil, err
 	}
 
-	// 6. 构建回调地址（如果业务系统没有提供，使用应用配置的默认地址）
-	notifyURL := req.NotifyURL
-	if notifyURL == "" {
-		notifyURL = app.CallbackURL
-	}
-
-	// 7. 调用支付渠道创建订单
+	// 6. 调用支付渠道创建订单
 	channelReq := &channel.CreateOrderRequest{
 		OrderID:     orderNo,
 		BizOrderNo:  req.OutTradeNo,
@@ -477,7 +478,14 @@ func (s *OrderService) ListFailedOrders(ctx context.Context, limit int) ([]*mode
 
 // generateOrderNo 生成订单号
 func (s *OrderService) generateOrderNo() string {
-	return fmt.Sprintf("ORD_%s_%d", time.Now().Format("20060102150405"), time.Now().UnixNano()%1000000)
+	// 使用时间戳 + 随机字节确保唯一性
+	randomBytes := make([]byte, 4)
+	rand.Read(randomBytes)
+	randomStr := hex.EncodeToString(randomBytes)
+
+	return fmt.Sprintf("ORD_%s_%s",
+		time.Now().Format("20060102150405"),
+		randomStr)
 }
 
 // buildWebhookURL 构建 Webhook 回调地址

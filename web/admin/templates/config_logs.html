@@ -1,0 +1,510 @@
+{{define "config_logs.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - GoPay 管理后台</title>
+    <link rel="stylesheet" href="/admin/static/css/main.css">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>GoPay 管理后台</h2>
+            </div>
+            <nav class="nav">
+                <a href="/admin" class="nav-item">
+                    <span class="icon">📊</span>
+                    <span>数据概览</span>
+                </a>
+                <a href="/admin/orders" class="nav-item">
+                    <span class="icon">📦</span>
+                    <span>订单管理</span>
+                </a>
+                <a href="/admin/apps" class="nav-item">
+                    <span class="icon">🔧</span>
+                    <span>应用管理</span>
+                </a>
+                <a href="/admin/config-logs" class="nav-item active">
+                    <span class="icon">📜</span>
+                    <span>配置日志</span>
+                </a>
+                <a href="/admin/reconciliation" class="nav-item">
+                    <span class="icon">📋</span>
+                    <span>对账报告</span>
+                </a>
+                <a href="/admin/logs" class="nav-item">
+                    <span class="icon">📝</span>
+                    <span>操作日志</span>
+                </a>
+            </nav>
+        </aside>
+        <main class="main-content">
+            <div id="app">
+                <div class="page-header">
+                    <h1>配置变更日志</h1>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="resourceTypeFilter" onchange="loadLogs()">
+                        <option value="">全部类型</option>
+                        <option value="app">应用</option>
+                        <option value="channel_config">渠道配置</option>
+                    </select>
+                    <select id="actionFilter" onchange="loadLogs()">
+                        <option value="">全部操作</option>
+                        <option value="create">创建</option>
+                        <option value="update">更新</option>
+                        <option value="delete">删除</option>
+                        <option value="disable">禁用</option>
+                    </select>
+                    <input type="text" id="operatorFilter" placeholder="操作人" onchange="loadLogs()">
+                    <input type="date" id="startDateFilter" onchange="loadLogs()">
+                    <span>至</span>
+                    <input type="date" id="endDateFilter" onchange="loadLogs()">
+                    <button class="btn btn-secondary" onclick="resetFilters()">重置</button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>操作人</th>
+                                <th>操作类型</th>
+                                <th>资源类型</th>
+                                <th>资源ID</th>
+                                <th>IP地址</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTable">
+                            <tr>
+                                <td colspan="7" class="text-center">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 日志详情模态框 -->
+    <div id="logModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>变更详情</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="log-detail">
+                    <div class="detail-section">
+                        <h3>基本信息</h3>
+                        <table class="detail-table">
+                            <tr>
+                                <td>操作人</td>
+                                <td id="detailOperator"></td>
+                            </tr>
+                            <tr>
+                                <td>操作类型</td>
+                                <td id="detailAction"></td>
+                            </tr>
+                            <tr>
+                                <td>资源类型</td>
+                                <td id="detailResourceType"></td>
+                            </tr>
+                            <tr>
+                                <td>资源ID</td>
+                                <td id="detailResourceId"></td>
+                            </tr>
+                            <tr>
+                                <td>IP地址</td>
+                                <td id="detailIp"></td>
+                            </tr>
+                            <tr>
+                                <td>User-Agent</td>
+                                <td id="detailUserAgent"></td>
+                            </tr>
+                            <tr>
+                                <td>时间</td>
+                                <td id="detailTime"></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div class="detail-section" id="oldValueSection" style="display:none;">
+                        <h3>变更前</h3>
+                        <pre id="oldValue" class="json-view"></pre>
+                    </div>
+
+                    <div class="detail-section">
+                        <h3>变更后</h3>
+                        <pre id="newValue" class="json-view"></pre>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+
+        // 加载日志列表
+        async function loadLogs() {
+            const resourceType = document.getElementById('resourceTypeFilter').value;
+            const action = document.getElementById('actionFilter').value;
+            const operator = document.getElementById('operatorFilter').value;
+            const startDate = document.getElementById('startDateFilter').value;
+            const endDate = document.getElementById('endDateFilter').value;
+
+            const params = new URLSearchParams({
+                page: currentPage,
+                page_size: 20,
+                resource_type: resourceType,
+                action: action,
+                operator: operator,
+                start_date: startDate,
+                end_date: endDate
+            });
+
+            const response = await fetch(`/admin/api/config-logs?${params}`);
+            const result = await response.json();
+
+            if (result.code === 'SUCCESS') {
+                renderLogs(result.data.logs);
+                renderPagination(result.data.total, result.data.page, result.data.page_size);
+            }
+        }
+
+        // 渲染日志列表
+        function renderLogs(logs) {
+            const tbody = document.getElementById('logsTable');
+            if (!logs || logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">暂无数据</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = logs.map(log => `
+                <tr>
+                    <td>${new Date(log.created_at).toLocaleString('zh-CN')}</td>
+                    <td>${log.operator}</td>
+                    <td><span class="badge ${getActionBadgeClass(log.action)}">${getActionText(log.action)}</span></td>
+                    <td><span class="badge badge-info">${getResourceTypeText(log.resource_type)}</span></td>
+                    <td><code>${log.resource_id}</code></td>
+                    <td>${log.ip_address}</td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick='viewDetail(${JSON.stringify(log)})'>查看详情</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 获取操作类型文本
+        function getActionText(action) {
+            const map = {
+                'create': '创建',
+                'update': '更新',
+                'delete': '删除',
+                'disable': '禁用'
+            };
+            return map[action] || action;
+        }
+
+        // 获取操作类型样式
+        function getActionBadgeClass(action) {
+            const map = {
+                'create': 'badge-success',
+                'update': 'badge-warning',
+                'delete': 'badge-danger',
+                'disable': 'badge-secondary'
+            };
+            return map[action] || 'badge-secondary';
+        }
+
+        // 获取资源类型文本
+        function getResourceTypeText(type) {
+            const map = {
+                'app': '应用',
+                'channel_config': '渠道配置'
+            };
+            return map[type] || type;
+        }
+
+        // 查看详情
+        function viewDetail(log) {
+            document.getElementById('detailOperator').textContent = log.operator;
+            document.getElementById('detailAction').textContent = getActionText(log.action);
+            document.getElementById('detailResourceType').textContent = getResourceTypeText(log.resource_type);
+            document.getElementById('detailResourceId').textContent = log.resource_id;
+            document.getElementById('detailIp').textContent = log.ip_address;
+            document.getElementById('detailUserAgent').textContent = log.user_agent;
+            document.getElementById('detailTime').textContent = new Date(log.created_at).toLocaleString('zh-CN');
+
+            // 显示旧值（如果有）
+            if (log.old_value) {
+                document.getElementById('oldValueSection').style.display = 'block';
+                document.getElementById('oldValue').textContent = JSON.stringify(JSON.parse(log.old_value), null, 2);
+            } else {
+                document.getElementById('oldValueSection').style.display = 'none';
+            }
+
+            // 显示新值
+            if (log.new_value) {
+                document.getElementById('newValue').textContent = JSON.stringify(JSON.parse(log.new_value), null, 2);
+            } else {
+                document.getElementById('newValue').textContent = '无';
+            }
+
+            document.getElementById('logModal').style.display = 'block';
+        }
+
+        // 渲染分页
+        function renderPagination(total, page, pageSize) {
+            const totalPages = Math.ceil(total / pageSize);
+            const pagination = document.getElementById('pagination');
+
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+
+            let html = `<span>共 ${total} 条</span>`;
+            if (page > 1) {
+                html += `<button onclick="changePage(${page - 1})">上一页</button>`;
+            }
+            html += `<span>第 ${page} / ${totalPages} 页</span>`;
+            if (page < totalPages) {
+                html += `<button onclick="changePage(${page + 1})">下一页</button>`;
+            }
+            pagination.innerHTML = html;
+        }
+
+        // 切换页码
+        function changePage(page) {
+            currentPage = page;
+            loadLogs();
+        }
+
+        // 重置筛选
+        function resetFilters() {
+            document.getElementById('resourceTypeFilter').value = '';
+            document.getElementById('actionFilter').value = '';
+            document.getElementById('operatorFilter').value = '';
+            document.getElementById('startDateFilter').value = '';
+            document.getElementById('endDateFilter').value = '';
+            currentPage = 1;
+            loadLogs();
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            document.getElementById('logModal').style.display = 'none';
+        }
+
+        // 页面加载时初始化
+        window.onload = function() {
+            loadLogs();
+        };
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('logModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        };
+    </script>
+
+    <style>
+        .page-header {
+            margin-bottom: 20px;
+        }
+
+        .filter-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .filter-bar select,
+        .filter-bar input[type="text"],
+        .filter-bar input[type="date"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+        }
+
+        .modal-large {
+            max-width: 900px;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .modal-body {
+            padding: 20px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            text-align: right;
+        }
+
+        .log-detail {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .detail-section h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .detail-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .detail-table td:first-child {
+            font-weight: 500;
+            width: 120px;
+            color: #666;
+        }
+
+        .json-view {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .badge-success {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .badge-warning {
+            background-color: #ffc107;
+            color: #333;
+        }
+
+        .badge-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .badge-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+
+        .badge-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .pagination {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .pagination button {
+            margin: 0 5px;
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background-color: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .pagination button:hover {
+            background-color: #f8f9fa;
+        }
+    </style>
+</body>
+</html>
+{{end}}

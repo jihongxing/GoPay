@@ -37,7 +37,28 @@
       "Bash(git branch:*)",
       "Bash(git push:*)",
       "Bash(git pull:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(go env:*)",
+      "Bash(go tool:*)",
+      "Bash(GOPROXY=https://goproxy.cn,direct go test:*)",
+      "Bash(grep -E \"\\\\.\\(md|MD\\)$\")",
+      "Bash(go run:*)",
+      "Bash(wc:*)",
+      "Bash(pkill:*)",
+      "Bash(taskkill //F //IM go.exe)",
+      "Bash(grep:*)",
+      "Bash(netstat -ano)",
+      "Bash(tasklist)",
+      "Bash(taskkill:*)",
+      "Bash(psql -h localhost -U gopay -d gopay -c \"\\\\d orders\")",
+      "Bash(PGPASSWORD=gopay_dev_password psql:*)",
+      "Bash(where psql:*)",
+      "Skill(update-config)",
+      "Bash(psql -h localhost -U gopay -d gopay -f migrations/004_config_audit_log.up.sql)",
+      "Bash(pkill -f gopay.exe)",
+      "Bash(./gopay.exe)",
+      "WebFetch(domain:github.com)",
+      "Bash(staticcheck ./...)"
     ]
   }
 }

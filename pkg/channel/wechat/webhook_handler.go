@@ -1,166 +1,109 @@
 package wechat
 
 import (
+	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
-	"errors"
-	"fmt"
+	"net/http"
 	"time"
 
+	"github.com/wechatpay-apiv3/wechatpay-go/core/auth/verifiers"
+	"github.com/wechatpay-apiv3/wechatpay-go/core/downloader"
+	"github.com/wechatpay-apiv3/wechatpay-go/core/notify"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments"
 	"gopay/pkg/channel"
 	"gopay/pkg/logger"
 )
 
 // WebhookHandler 处理微信支付 Webhook
 type WebhookHandler struct {
-	apiV3Key string // API v3 密钥，用于解密
+	handler *notify.Handler // 官方 SDK 的通知处理器
 }
 
 // NewWebhookHandler 创建 Webhook 处理器
-func NewWebhookHandler(apiV3Key string) *WebhookHandler {
-	return &WebhookHandler{
-		apiV3Key: apiV3Key,
+// 使用微信支付官方 SDK 进行签名验证和解密
+func NewWebhookHandler(mchID, apiV3Key, mchCertSerialNo string, mchPrivateKey string) (*WebhookHandler, error) {
+	// 1. 使用「证书下载器」下载微信支付平台证书
+	certDownloader := downloader.MgrInstance().GetCertificateVisitor(mchID)
+
+	// 2. 使用「证书校验器」校验微信支付应答签名
+	verifier := verifiers.NewSHA256WithRSAVerifier(certDownloader)
+
+	// 3. 创建通知处理器
+	handler, err := notify.NewRSANotifyHandler(apiV3Key, verifier)
+	if err != nil {
+		logger.Error("Failed to create notify handler: %v", err)
+		return nil, err
 	}
+
+	return &WebhookHandler{
+		handler: handler,
+	}, nil
 }
 
 // HandleWebhook 处理 Webhook 回调
 func (h *WebhookHandler) HandleWebhook(ctx context.Context, req *channel.WebhookRequest) (*channel.WebhookResponse, error) {
 	logger.Info("Handling wechat webhook")
 
-	// 1. 验证签名
-	if err := h.verifySignature(req); err != nil {
-		logger.Error("Webhook signature verification failed: %v", err)
+	// 构建标准 HTTP 请求对象，设置请求体
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", "", bytes.NewReader(req.RawBody))
+	if err != nil {
+		logger.Error("Failed to create http request: %v", err)
+		return &channel.WebhookResponse{
+			Success:      false,
+			ResponseBody: []byte(`{"code":"FAIL","message":"请求构建失败"}`),
+		}, nil
+	}
+
+	// 设置请求头（微信支付签名验证需要）
+	httpReq.Header.Set("Wechatpay-Timestamp", req.Headers["Wechatpay-Timestamp"])
+	httpReq.Header.Set("Wechatpay-Nonce", req.Headers["Wechatpay-Nonce"])
+	httpReq.Header.Set("Wechatpay-Signature", req.Headers["Wechatpay-Signature"])
+	httpReq.Header.Set("Wechatpay-Serial", req.Headers["Wechatpay-Serial"])
+
+	// 使用官方 SDK 验证签名并解密
+	// ParseNotifyRequest 会自动：
+	// 1. 验证 RSA-SHA256 签名（使用微信平台证书公钥）
+	// 2. 验证时间戳（防重放攻击）
+	// 3. 解密 AES-256-GCM 加密的资源内容
+	transaction := new(payments.Transaction)
+	_, err = h.handler.ParseNotifyRequest(ctx, httpReq, transaction)
+	if err != nil {
+		logger.Error("Webhook signature verification or decryption failed: %v", err)
 		return &channel.WebhookResponse{
 			Success:      false,
 			ResponseBody: []byte(`{"code":"FAIL","message":"签名验证失败"}`),
 		}, nil
 	}
 
-	// 2. 解析请求体
-	var webhookData WechatWebhookData
-	if err := json.Unmarshal(req.RawBody, &webhookData); err != nil {
-		logger.Error("Failed to parse webhook body: %v", err)
-		return &channel.WebhookResponse{
-			Success:      false,
-			ResponseBody: []byte(`{"code":"FAIL","message":"数据格式错误"}`),
-		}, nil
-	}
+	logger.Info("Webhook signature verified successfully: outTradeNo=%s, tradeState=%s",
+		*transaction.OutTradeNo, *transaction.TradeState)
 
-	// 3. 解密资源内容
-	resource, err := h.decryptResource(webhookData.Resource)
-	if err != nil {
-		logger.Error("Failed to decrypt resource: %v", err)
-		return &channel.WebhookResponse{
-			Success:      false,
-			ResponseBody: []byte(`{"code":"FAIL","message":"解密失败"}`),
-		}, nil
-	}
-
-	// 4. 解析支付结果
-	var paymentResult WechatPaymentResult
-	if err := json.Unmarshal([]byte(resource), &paymentResult); err != nil {
-		logger.Error("Failed to parse payment result: %v", err)
-		return &channel.WebhookResponse{
-			Success:      false,
-			ResponseBody: []byte(`{"code":"FAIL","message":"支付结果解析失败"}`),
-		}, nil
-	}
-
-	// 5. 构建响应
+	// 构建响应
 	resp := &channel.WebhookResponse{
 		Success:         true,
-		PlatformTradeNo: paymentResult.OutTradeNo,
-		Status:          h.mapTradeState(paymentResult.TradeState),
-		PaidAmount:      paymentResult.Amount.Total,
+		PlatformTradeNo: *transaction.OutTradeNo,
+		Status:          mapTradeState(*transaction.TradeState),
+		PaidAmount:      int64(*transaction.Amount.Total),
 		ResponseBody:    []byte(`{"code":"SUCCESS","message":"成功"}`),
 	}
 
-	if paymentResult.SuccessTime != "" {
-		paidAt, _ := time.Parse(time.RFC3339, paymentResult.SuccessTime)
+	if transaction.SuccessTime != nil {
+		paidAt, _ := time.Parse(time.RFC3339, *transaction.SuccessTime)
 		resp.PaidAt = paidAt
 	}
 
-	logger.Info("Webhook processed: outTradeNo=%s, tradeState=%s", paymentResult.OutTradeNo, paymentResult.TradeState)
+	logger.Info("Webhook processed: outTradeNo=%s, tradeState=%s", *transaction.OutTradeNo, *transaction.TradeState)
 
 	return resp, nil
 }
 
-// verifySignature 验证签名
-func (h *WebhookHandler) verifySignature(req *channel.WebhookRequest) error {
-	// 获取签名相关的请求头
-	timestamp := req.Headers["Wechatpay-Timestamp"]
-	nonce := req.Headers["Wechatpay-Nonce"]
-	signature := req.Headers["Wechatpay-Signature"]
-	serial := req.Headers["Wechatpay-Serial"]
-
-	if timestamp == "" || nonce == "" || signature == "" || serial == "" {
-		return errors.New("missing signature headers")
-	}
-
-	// 构建待验证的字符串
-	// 格式: timestamp\n + nonce\n + body\n
-	message := fmt.Sprintf("%s\n%s\n%s\n", timestamp, nonce, string(req.RawBody))
-
-	// 这里需要使用微信支付平台证书的公钥进行验证
-	// 简化实现：实际需要从微信获取平台证书并验证
-	// TODO: 实现完整的签名验证逻辑
-	logger.Info("Signature verification: timestamp=%s, nonce=%s, serial=%s", timestamp, nonce, serial)
-
-	// 暂时返回成功，实际应该验证签名
-	_ = message
-	_ = signature
-
-	return nil
-}
-
-// decryptResource 解密资源内容
-func (h *WebhookHandler) decryptResource(resource WechatResource) (string, error) {
-	// 使用 API v3 密钥解密
-	key := []byte(h.apiV3Key)
-
-	// Base64 解码
-	ciphertext, err := base64.StdEncoding.DecodeString(resource.Ciphertext)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode ciphertext: %w", err)
-	}
-
-	nonce, err := base64.StdEncoding.DecodeString(resource.Nonce)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode nonce: %w", err)
-	}
-
-	associatedData := []byte(resource.AssociatedData)
-
-	// 使用 AES-256-GCM 解密
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to create cipher: %w", err)
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("failed to create GCM: %w", err)
-	}
-
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, associatedData)
-	if err != nil {
-		return "", fmt.Errorf("failed to decrypt: %w", err)
-	}
-
-	return string(plaintext), nil
-}
-
 // mapTradeState 映射交易状态
-func (h *WebhookHandler) mapTradeState(tradeState string) channel.OrderStatus {
+func mapTradeState(tradeState string) channel.OrderStatus {
 	switch tradeState {
 	case "SUCCESS":
 		return channel.OrderStatusPaid
 	case "REFUND":
-		return channel.OrderStatusRefunded
+		return channel.OrderStatusRefund
 	case "NOTPAY":
 		return channel.OrderStatusPending
 	case "CLOSED":
@@ -170,55 +113,8 @@ func (h *WebhookHandler) mapTradeState(tradeState string) channel.OrderStatus {
 	case "USERPAYING":
 		return channel.OrderStatusPending
 	case "PAYERROR":
-		return channel.OrderStatusFailed
+		return channel.OrderStatusClosed
 	default:
 		return channel.OrderStatusPending
 	}
-}
-
-// deriveKey 从 API v3 密钥派生 AES 密钥
-func deriveKey(apiV3Key string) []byte {
-	hash := sha256.Sum256([]byte(apiV3Key))
-	return hash[:]
-}
-
-// WechatWebhookData 微信 Webhook 数据结构
-type WechatWebhookData struct {
-	ID           string          `json:"id"`
-	CreateTime   string          `json:"create_time"`
-	ResourceType string          `json:"resource_type"`
-	EventType    string          `json:"event_type"`
-	Summary      string          `json:"summary"`
-	Resource     WechatResource  `json:"resource"`
-}
-
-// WechatResource 加密的资源数据
-type WechatResource struct {
-	Algorithm      string `json:"algorithm"`
-	Ciphertext     string `json:"ciphertext"`
-	AssociatedData string `json:"associated_data"`
-	Nonce          string `json:"nonce"`
-}
-
-// WechatPaymentResult 支付结果
-type WechatPaymentResult struct {
-	AppID          string `json:"appid"`
-	MchID          string `json:"mchid"`
-	OutTradeNo     string `json:"out_trade_no"`
-	TransactionID  string `json:"transaction_id"`
-	TradeType      string `json:"trade_type"`
-	TradeState     string `json:"trade_state"`
-	TradeStateDesc string `json:"trade_state_desc"`
-	BankType       string `json:"bank_type"`
-	Attach         string `json:"attach"`
-	SuccessTime    string `json:"success_time"`
-	Payer          struct {
-		OpenID string `json:"openid"`
-	} `json:"payer"`
-	Amount struct {
-		Total         int64  `json:"total"`
-		PayerTotal    int64  `json:"payer_total"`
-		Currency      string `json:"currency"`
-		PayerCurrency string `json:"payer_currency"`
-	} `json:"amount"`
 }

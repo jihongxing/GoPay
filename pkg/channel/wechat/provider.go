@@ -159,8 +159,16 @@ func (p *Provider) QueryOrder(ctx context.Context, req *channel.QueryOrderReques
 func (p *Provider) HandleWebhook(ctx context.Context, req *channel.WebhookRequest) (*channel.WebhookResponse, error) {
 	logger.Info("Handling wechat webhook, body length=%d", len(req.RawBody))
 
-	// 使用 WebhookHandler 处理（新的实现）
-	handler := NewWebhookHandler(p.apiV3Key)
+	// 使用 WebhookHandler 处理（使用官方 SDK 验证签名）
+	handler, err := NewWebhookHandler(p.mchID, p.apiV3Key, p.serialNo, "")
+	if err != nil {
+		logger.Error("Failed to create webhook handler: %v", err)
+		return &channel.WebhookResponse{
+			Success:      false,
+			ResponseBody: []byte(`{"code":"FAIL","message":"系统错误"}`),
+		}, err
+	}
+
 	return handler.HandleWebhook(ctx, req)
 }
 

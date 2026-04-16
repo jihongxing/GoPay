@@ -52,8 +52,12 @@ func TestOrder_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// TODO: 实现验证逻辑
-			assert.NotNil(t, tt.order)
+			err := tt.order.Validate()
+			if tt.wantErr {
+				assert.Error(t, err, "应该返回错误")
+			} else {
+				assert.NoError(t, err, "不应该返回错误")
+			}
 		})
 	}
 }
@@ -93,8 +97,8 @@ func TestOrder_IsPaid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// TODO: 实现 IsPaid 方法
-			assert.Equal(t, tt.expect, tt.order.Status == "paid")
+			result := tt.order.IsPaid()
+			assert.Equal(t, tt.expect, result, "IsPaid() 返回值不符合预期")
 		})
 	}
 }

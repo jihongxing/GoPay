@@ -3,6 +3,7 @@ package alipay
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/smartwalle/alipay/v3"
@@ -80,7 +81,7 @@ func (p *Provider) QueryOrder(ctx context.Context, req *channel.QueryOrderReques
 	}
 
 	// 转换订单状态
-	status := convertTradeStatus(resp.TradeStatus)
+	status := convertTradeStatus(string(resp.TradeStatus))
 
 	queryResp := &channel.QueryOrderResponse{
 		Status:          status,
@@ -113,8 +114,18 @@ func (p *Provider) QueryOrder(ctx context.Context, req *channel.QueryOrderReques
 func (p *Provider) HandleWebhook(ctx context.Context, req *channel.WebhookRequest) (*channel.WebhookResponse, error) {
 	logger.Info("Handling alipay webhook, body length=%d", len(req.RawBody))
 
+	// 解析 URL 参数
+	values, err := url.ParseQuery(string(req.RawBody))
+	if err != nil {
+		logger.Error("Failed to parse alipay notification: %v", err)
+		return &channel.WebhookResponse{
+			Success:      false,
+			ResponseBody: []byte("failure"),
+		}, nil
+	}
+
 	// 解析回调通知
-	notification, err := p.client.DecodeNotification(req.RawBody)
+	notification, err := p.client.DecodeNotification(values)
 	if err != nil {
 		logger.Error("Failed to decode alipay notification: %v", err)
 		return &channel.WebhookResponse{
@@ -124,7 +135,7 @@ func (p *Provider) HandleWebhook(ctx context.Context, req *channel.WebhookReques
 	}
 
 	// 验证签名
-	if err := p.client.VerifySign(notification); err != nil {
+	if err := p.client.VerifySign(values); err != nil {
 		logger.Error("Failed to verify alipay signature: %v", err)
 		return &channel.WebhookResponse{
 			Success:      false,
@@ -137,7 +148,7 @@ func (p *Provider) HandleWebhook(ctx context.Context, req *channel.WebhookReques
 	tradeStatus := notification.TradeStatus
 
 	// 转换订单状态
-	status := convertTradeStatus(tradeStatus)
+	status := convertTradeStatus(string(tradeStatus))
 
 	resp := &channel.WebhookResponse{
 		Success:         true,
