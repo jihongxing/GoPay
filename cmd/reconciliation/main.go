@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/lib/pq"
 	"gopay/internal/reconciliation"
+	"gopay/pkg/alert"
 )
 
 func main() {
@@ -42,7 +43,10 @@ func main() {
 	log.Println("数据库连接成功")
 
 	// 创建告警通知器
-	alertNotifier := &reconciliation.DummyAlertNotifier{}
+	var alertNotifier reconciliation.AlertNotifier = &reconciliation.DummyAlertNotifier{}
+	if webhookURL := os.Getenv("ALERT_WEBHOOK_URL"); webhookURL != "" {
+		alertNotifier = reconciliation.NewAlertManagerNotifier(alert.NewAlertManager(webhookURL))
+	}
 
 	// 创建调度器
 	scheduler := reconciliation.NewScheduler(db, alertNotifier)

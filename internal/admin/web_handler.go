@@ -3,6 +3,8 @@ package admin
 import (
 	"database/sql"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -68,7 +70,6 @@ func (h *WebHandler) RegisterRoutesWithAuth(r *gin.Engine, authMiddleware ...gin
 func (h *WebHandler) RegisterRoutes(r *gin.Engine) {
 	h.RegisterRoutesWithAuth(r)
 }
-
 
 // Dashboard 数据概览页面
 func (h *WebHandler) Dashboard(c *gin.Context) {
@@ -715,11 +716,65 @@ func (h *WebHandler) GetReconciliationDetail(c *gin.Context) {
 
 // DownloadReport 下载对账报告
 func (h *WebHandler) DownloadReport(c *gin.Context) {
-	// TODO: 实现报告下载
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"code":    "ERROR",
-		"message": "功能开发中",
-	})
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    "ERROR",
+			"message": "参数错误",
+		})
+		return
+	}
+
+	var filePath, channel string
+	var date string
+	err = h.db.QueryRow(`
+		SELECT file_path, channel, date
+		FROM reconciliation_reports
+		WHERE id = $1
+	`, id).Scan(&filePath, &channel, &date)
+
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    "ERROR",
+			"message": "报告不存在",
+		})
+		return
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    "ERROR",
+			"message": "查询失败",
+		})
+		return
+	}
+
+	if filePath == "" {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    "ERROR",
+			"message": "报告文件不存在",
+		})
+		return
+	}
+
+	if _, err := os.Stat(filePath); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    "ERROR",
+			"message": "报告文件已丢失",
+		})
+		return
+	}
+
+	filename := filepath.Base(filePath)
+	if filename == "" {
+		filename = "reconciliation_report.csv"
+	}
+	if date != "" {
+		filename = channel + "_" + date + ".csv"
+	}
+
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.File(filePath)
 }
 
 // GetOrderStats 获取订单统计

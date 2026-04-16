@@ -2,11 +2,14 @@ package reconciliation
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"time"
 )
 
 // ReconciliationService 对账服务
 type ReconciliationService struct {
+	db               *sql.DB
 	wechatReconciler *WechatReconciler
 	alipayReconciler *AlipayReconciler
 	reportGenerator  *ReportGenerator
@@ -18,10 +21,16 @@ type BillDownloader interface {
 }
 
 // NewReconciliationService 创建对账服务
-func NewReconciliationService() *ReconciliationService {
+func NewReconciliationService(db ...*sql.DB) *ReconciliationService {
+	var conn *sql.DB
+	if len(db) > 0 {
+		conn = db[0]
+	}
+
 	return &ReconciliationService{
-		wechatReconciler: NewWechatReconciler(),
-		alipayReconciler: NewAlipayReconciler(),
+		db:               conn,
+		wechatReconciler: NewWechatReconciler(db...),
+		alipayReconciler: NewAlipayReconciler(db...),
 		reportGenerator:  NewReportGenerator(),
 	}
 }
@@ -92,7 +101,109 @@ func (s *ReconciliationService) ReconcileAll(ctx context.Context, date time.Time
 
 // GenerateReport 生成对账报告
 func (s *ReconciliationService) GenerateReport(ctx context.Context, result *ReconcileResult) (string, error) {
-	return s.reportGenerator.Generate(ctx, result)
+	if result == nil {
+		return "", fmt.Errorf("result is required")
+	}
+
+	if result.CreatedAt.IsZero() {
+		result.CreatedAt = time.Now()
+	}
+
+	path, err := s.reportGenerator.Generate(ctx, result)
+	if err != nil {
+		return "", err
+	}
+
+	if s.db == nil {
+		return path, nil
+	}
+
+	reportID, err := s.saveReport(ctx, result, path)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.saveReportDetails(ctx, reportID, result); err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
+
+func (s *ReconciliationService) saveReport(ctx context.Context, result *ReconcileResult, path string) (int64, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx, `
+		INSERT INTO reconciliation_reports (
+			date, channel, total_orders, matched_orders,
+			long_orders, short_orders, amount_mismatch, status, file_path, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
+		ON CONFLICT (date, channel) DO UPDATE SET
+			total_orders = EXCLUDED.total_orders,
+			matched_orders = EXCLUDED.matched_orders,
+			long_orders = EXCLUDED.long_orders,
+			short_orders = EXCLUDED.short_orders,
+			amount_mismatch = EXCLUDED.amount_mismatch,
+			status = EXCLUDED.status,
+			file_path = EXCLUDED.file_path,
+			updated_at = NOW()
+		RETURNING id
+	`,
+		result.Date.Format("2006-01-02"),
+		result.Channel,
+		result.TotalOrders,
+		result.MatchedOrders,
+		len(result.MissingOrders),
+		len(result.ExtraOrders),
+		len(result.AmountMismatch),
+		result.Status,
+		path,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("save reconciliation report failed: %w", err)
+	}
+	return id, nil
+}
+
+func (s *ReconciliationService) saveReportDetails(ctx context.Context, reportID int64, result *ReconcileResult) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin report detail tx failed: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM reconciliation_details WHERE report_id = $1`, reportID); err != nil {
+		return fmt.Errorf("clear reconciliation details failed: %w", err)
+	}
+
+	for _, orderNo := range result.MissingOrders {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO reconciliation_details (report_id, order_no, type)
+			VALUES ($1, $2, 'long')
+		`, reportID, orderNo); err != nil {
+			return fmt.Errorf("save long detail failed: %w", err)
+		}
+	}
+
+	for _, orderNo := range result.ExtraOrders {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO reconciliation_details (report_id, order_no, type)
+			VALUES ($1, $2, 'short')
+		`, reportID, orderNo); err != nil {
+			return fmt.Errorf("save short detail failed: %w", err)
+		}
+	}
+
+	for _, mismatch := range result.AmountMismatch {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO reconciliation_details (
+				report_id, order_no, type, internal_amount, external_amount, diff
+			) VALUES ($1, $2, 'amount_mismatch', $3, $4, $5)
+		`, reportID, mismatch.OrderNo, mismatch.InternalAmount, mismatch.ExternalAmount, mismatch.Difference); err != nil {
+			return fmt.Errorf("save amount mismatch detail failed: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // ScheduleReconciliation 定时对账任务

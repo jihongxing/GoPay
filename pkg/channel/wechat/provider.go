@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/rsa"
 	"fmt"
+	"strconv"
 
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/option"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/native"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/refunddomestic"
 	"github.com/wechatpay-apiv3/wechatpay-go/utils"
 
 	"gopay/pkg/channel"
@@ -31,6 +33,7 @@ type Provider struct {
 	privateKey    *rsa.PrivateKey
 	client        *core.Client
 	nativeService *native.NativeApiService
+	refundService *refunddomestic.RefundsApiService
 }
 
 // Config 微信支付配置
@@ -62,6 +65,7 @@ func NewProvider(cfg *Config) (*Provider, error) {
 
 	// 创建 Native 支付服务
 	nativeService := native.NativeApiService{Client: client}
+	refundService := refunddomestic.RefundsApiService{Client: client}
 
 	logger.Info("Wechat pay provider initialized successfully, mchID=%s", cfg.MchID)
 
@@ -72,6 +76,7 @@ func NewProvider(cfg *Config) (*Provider, error) {
 		privateKey:    privateKey,
 		client:        client,
 		nativeService: &nativeService,
+		refundService: &refundService,
 	}, nil
 }
 
@@ -181,6 +186,115 @@ func (p *Provider) HandleWebhook(ctx context.Context, req *channel.WebhookReques
 	return handler.HandleWebhook(ctx, req)
 }
 
+// Refund 发起退款
+func (p *Provider) Refund(ctx context.Context, req *channel.RefundRequest) (*channel.RefundResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("refund request is required")
+	}
+
+	amount := req.Amount
+	total := req.Amount
+	refundReq := refunddomestic.CreateRequest{
+		OutTradeNo:  &req.PlatformNo,
+		OutRefundNo: &req.RefundNo,
+		Reason:      &req.Reason,
+		Amount: &refunddomestic.AmountReq{
+			Refund:   &amount,
+			Total:    &total,
+			Currency: core.String("CNY"),
+		},
+	}
+	if req.NotifyURL != "" {
+		refundReq.NotifyUrl = &req.NotifyURL
+	}
+
+	resp, result, err := p.refundService.Create(ctx, refundReq)
+	if err != nil {
+		return nil, fmt.Errorf("wechat refund failed: %w", err)
+	}
+	if result != nil && result.Response != nil && result.Response.StatusCode >= 400 {
+		return nil, fmt.Errorf("wechat refund failed: status=%d", result.Response.StatusCode)
+	}
+
+	refundResp := &channel.RefundResponse{
+		RefundNo:        req.RefundNo,
+		PlatformTradeNo: req.PlatformNo,
+		Amount:          req.Amount,
+		ExtraData:       map[string]string{},
+	}
+	if resp != nil {
+		if resp.RefundId != nil {
+			refundResp.PlatformRefundNo = *resp.RefundId
+		}
+		if resp.OutRefundNo != nil {
+			refundResp.RefundNo = *resp.OutRefundNo
+		}
+		if resp.OutTradeNo != nil {
+			refundResp.PlatformTradeNo = *resp.OutTradeNo
+		}
+		if resp.SuccessTime != nil {
+			refundResp.RefundedAt = resp.SuccessTime
+		}
+		if resp.Status != nil {
+			refundResp.Status = convertRefundStatus(string(*resp.Status))
+		}
+		if resp.Amount != nil && resp.Amount.Refund != nil {
+			refundResp.Amount = *resp.Amount.Refund
+		}
+		if resp.Amount != nil && resp.Amount.Total != nil {
+			refundResp.ExtraData["total"] = strconv.FormatInt(*resp.Amount.Total, 10)
+		}
+	}
+
+	return refundResp, nil
+}
+
+// QueryRefund 查询退款
+func (p *Provider) QueryRefund(ctx context.Context, req *channel.RefundRequest) (*channel.RefundResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("refund request is required")
+	}
+
+	queryReq := refunddomestic.QueryByOutRefundNoRequest{
+		OutRefundNo: &req.RefundNo,
+	}
+	resp, result, err := p.refundService.QueryByOutRefundNo(ctx, queryReq)
+	if err != nil {
+		return nil, fmt.Errorf("wechat refund query failed: %w", err)
+	}
+	if result != nil && result.Response != nil && result.Response.StatusCode >= 400 {
+		return nil, fmt.Errorf("wechat refund query failed: status=%d", result.Response.StatusCode)
+	}
+
+	refundResp := &channel.RefundResponse{
+		RefundNo:        req.RefundNo,
+		PlatformTradeNo: req.PlatformNo,
+		ExtraData:       map[string]string{},
+	}
+	if resp != nil {
+		if resp.RefundId != nil {
+			refundResp.PlatformRefundNo = *resp.RefundId
+		}
+		if resp.OutRefundNo != nil {
+			refundResp.RefundNo = *resp.OutRefundNo
+		}
+		if resp.OutTradeNo != nil {
+			refundResp.PlatformTradeNo = *resp.OutTradeNo
+		}
+		if resp.SuccessTime != nil {
+			refundResp.RefundedAt = resp.SuccessTime
+		}
+		if resp.Status != nil {
+			refundResp.Status = convertRefundStatus(string(*resp.Status))
+		}
+		if resp.Amount != nil && resp.Amount.Refund != nil {
+			refundResp.Amount = *resp.Amount.Refund
+		}
+	}
+
+	return refundResp, nil
+}
+
 // Close 关闭资源
 func (p *Provider) Close() error {
 	logger.Info("Closing wechat pay provider")
@@ -211,5 +325,20 @@ func convertTradeState(state string) channel.OrderStatus {
 		return channel.OrderStatusRefund
 	default:
 		return channel.OrderStatusPending
+	}
+}
+
+func convertRefundStatus(status string) channel.RefundStatus {
+	switch status {
+	case "SUCCESS":
+		return channel.RefundStatusSuccess
+	case "PROCESSING":
+		return channel.RefundStatusProcessing
+	case "CLOSED":
+		return channel.RefundStatusFailed
+	case "ABNORMAL":
+		return channel.RefundStatusFailed
+	default:
+		return channel.RefundStatusPending
 	}
 }

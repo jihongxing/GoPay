@@ -1,12 +1,22 @@
 package reconciliation
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	"github.com/wechatpay-apiv3/wechatpay-go/core"
+	"github.com/wechatpay-apiv3/wechatpay-go/core/option"
+	"github.com/wechatpay-apiv3/wechatpay-go/utils"
 )
 
 // WechatReconciler 微信对账器
@@ -16,10 +26,15 @@ type WechatReconciler struct {
 }
 
 // NewWechatReconciler 创建微信对账器
-func NewWechatReconciler() *WechatReconciler {
+func NewWechatReconciler(db ...*sql.DB) *WechatReconciler {
+	var repo OrderRepository = NewOrderRepository()
+	if len(db) > 0 && db[0] != nil {
+		repo = NewDBOrderRepository(db[0])
+	}
+
 	return &WechatReconciler{
 		billDownloader: NewWechatBillDownloader(),
-		orderRepo:      NewOrderRepository(),
+		orderRepo:      repo,
 	}
 }
 
@@ -163,38 +178,88 @@ func (r *WechatReconciler) compare(external []BillRecord, internal []Order) *Rec
 }
 
 // WechatBillDownloader 微信账单下载器
-type WechatBillDownloader struct{}
+type WechatBillDownloader struct {
+	client     *core.Client
+	httpClient *http.Client
+}
 
 func NewWechatBillDownloader() *WechatBillDownloader {
-	return &WechatBillDownloader{}
+	client, _ := newWechatBillClientFromEnv()
+	return &WechatBillDownloader{
+		client: client,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
 func (d *WechatBillDownloader) Download(ctx context.Context, date time.Time) ([]byte, error) {
-	// 调用微信 API 下载账单
-	// https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_6.shtml
-	//
-	// 实现步骤：
-	// 1. 构建请求参数（账单日期、账单类型等）
-	// 2. 使用商户证书签名请求
-	// 3. 调用微信支付 API
-	// 4. 下载并解密账单文件
-	//
-	// 示例代码：
-	// billDate := date.Format("2006-01-02")
-	// req := &downloadbill.GetTradeBillRequest{
-	//     BillDate: core.String(billDate),
-	//     BillType: core.String("ALL"),
-	// }
-	// resp, result, err := billService.GetTradeBill(ctx, req)
-	// if err != nil {
-	//     return nil, fmt.Errorf("download bill failed: %w", err)
-	// }
-	//
-	// // 下载账单文件
-	// billData, err := downloadBillFile(resp.DownloadUrl)
-	// return billData, err
+	if d.client == nil {
+		return nil, fmt.Errorf("wechat bill downloader is not configured")
+	}
 
-	return nil, fmt.Errorf("wechat bill download not implemented: please integrate wechatpay-go SDK")
+	billDate := date.Format("2006-01-02")
+	apiURL := os.Getenv("WECHAT_API_URL")
+	if apiURL == "" {
+		apiURL = "https://api.mch.weixin.qq.com"
+	}
+	requestURL := fmt.Sprintf("%s/v3/bill/tradebill?bill_date=%s&bill_type=ALL",
+		strings.TrimRight(apiURL, "/"), billDate)
+
+	result, err := d.client.Get(ctx, requestURL)
+	if err != nil {
+		return nil, fmt.Errorf("request wechat bill url failed: %w", err)
+	}
+	defer result.Response.Body.Close()
+
+	var resp struct {
+		DownloadURL string `json:"download_url"`
+	}
+	if err := json.NewDecoder(result.Response.Body).Decode(&resp); err != nil {
+		return nil, fmt.Errorf("decode wechat bill response failed: %w", err)
+	}
+	if resp.DownloadURL == "" {
+		return nil, fmt.Errorf("wechat bill download url is empty")
+	}
+
+	fileResp, err := d.httpClient.Get(resp.DownloadURL)
+	if err != nil {
+		return nil, fmt.Errorf("download wechat bill file failed: %w", err)
+	}
+	defer fileResp.Body.Close()
+
+	body, err := io.ReadAll(fileResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read wechat bill file failed: %w", err)
+	}
+
+	if bytes.HasPrefix(body, []byte{0x1f, 0x8b}) {
+		reader, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("open gzip bill failed: %w", err)
+		}
+		defer reader.Close()
+		return io.ReadAll(reader)
+	}
+
+	return body, nil
+}
+
+func newWechatBillClientFromEnv() (*core.Client, error) {
+	mchID := os.Getenv("WECHAT_MCH_ID")
+	serialNo := os.Getenv("WECHAT_SERIAL_NO")
+	apiV3Key := os.Getenv("WECHAT_API_V3_KEY")
+	privateKeyPath := os.Getenv("WECHAT_PRIVATE_KEY_PATH")
+	if mchID == "" || serialNo == "" || apiV3Key == "" || privateKeyPath == "" {
+		return nil, fmt.Errorf("wechat bill downloader env is incomplete")
+	}
+
+	privateKey, err := utils.LoadPrivateKeyWithPath(privateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("load wechat private key failed: %w", err)
+	}
+
+	return core.NewClient(context.Background(), option.WithWechatPayAutoAuthCipher(mchID, serialNo, privateKey, apiV3Key))
 }
 
 // OrderRepository 订单仓储接口

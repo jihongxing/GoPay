@@ -19,8 +19,14 @@ import (
 type NotifyService struct {
 	db           *sql.DB
 	orderService *OrderService
+	alertManager AlertManager
 	httpClient   *http.Client
 	workerPool   chan struct{} // 限制并发数量
+}
+
+// AlertManager 告警接口
+type AlertManager interface {
+	AlertNotifyFailed(order *models.Order)
 }
 
 // NewNotifyService 创建通知服务
@@ -35,14 +41,19 @@ func NewNotifyService(db *sql.DB, orderService *OrderService) *NotifyService {
 	}
 }
 
+// SetAlertManager 设置告警管理器
+func (s *NotifyService) SetAlertManager(am AlertManager) {
+	s.alertManager = am
+}
+
 // NotifyRequest 通知请求
 type NotifyRequest struct {
-	OrderNo     string `json:"order_no"`
-	OutTradeNo  string `json:"out_trade_no"`
-	Amount      int64  `json:"amount"`
-	Status      string `json:"status"`
-	PaidAt      string `json:"paid_at"`
-	Channel     string `json:"channel"`
+	OrderNo        string `json:"order_no"`
+	OutTradeNo     string `json:"out_trade_no"`
+	Amount         int64  `json:"amount"`
+	Status         string `json:"status"`
+	PaidAt         string `json:"paid_at"`
+	Channel        string `json:"channel"`
 	ChannelOrderNo string `json:"channel_order_no"`
 }
 
@@ -242,10 +253,9 @@ func (s *NotifyService) alertOps(order *models.Order) {
 	logger.Error("ALERT: Notify failed after max retries, orderNo=%s, outTradeNo=%s, amount=%d",
 		order.OrderNo, order.OutTradeNo, order.Amount)
 
-	// 如果配置了告警管理器，发送告警
-	// 这里可以集成钉钉、企业微信、邮件等告警方式
-	// 示例：发送到告警系统
-	// alertManager.AlertNotifyFailed(order)
+	if s.alertManager != nil {
+		s.alertManager.AlertNotifyFailed(order)
+	}
 }
 
 // RetryNotify 手动重试通知（内部管理接口使用）

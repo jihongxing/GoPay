@@ -14,11 +14,11 @@ import (
 
 // Provider 支付宝基础 Provider
 type Provider struct {
-	appID          string
-	privateKey     string
+	appID           string
+	privateKey      string
 	alipayPublicKey string
-	isProduction   bool
-	client         *alipay.Client
+	isProduction    bool
+	client          *alipay.Client
 }
 
 // Config 支付宝配置
@@ -176,6 +176,100 @@ func (p *Provider) HandleWebhook(ctx context.Context, req *channel.WebhookReques
 	logger.Info("Alipay webhook handled: tradeNo=%s, status=%s", outTradeNo, status)
 
 	return resp, nil
+}
+
+// Refund 发起退款
+func (p *Provider) Refund(ctx context.Context, req *channel.RefundRequest) (*channel.RefundResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("refund request is required")
+	}
+
+	refundReq := alipay.TradeRefund{
+		OutTradeNo:   req.PlatformNo,
+		RefundAmount: formatAmount(req.Amount),
+		RefundReason: req.Reason,
+		OutRequestNo: req.RefundNo,
+		QueryOptions: []string{"refund_detail_item_list"},
+	}
+
+	resp, err := p.client.TradeRefund(ctx, refundReq)
+	if err != nil {
+		return nil, fmt.Errorf("alipay refund failed: %w", err)
+	}
+	if !resp.IsSuccess() {
+		return nil, fmt.Errorf("alipay refund failed: %s - %s", resp.Code, resp.Msg)
+	}
+
+	refundResp := &channel.RefundResponse{
+		RefundNo:        req.RefundNo,
+		PlatformTradeNo: req.PlatformNo,
+		Amount:          req.Amount,
+		Status:          channel.RefundStatusProcessing,
+		ExtraData:       map[string]string{},
+	}
+	if resp.OutTradeNo != "" {
+		refundResp.PlatformTradeNo = resp.OutTradeNo
+	}
+	if resp.TradeNo != "" {
+		refundResp.PlatformRefundNo = resp.TradeNo
+	}
+	if resp.RefundFee != "" {
+		refundResp.Amount = parseAmount(resp.RefundFee)
+	}
+	return refundResp, nil
+}
+
+// QueryRefund 查询退款
+func (p *Provider) QueryRefund(ctx context.Context, req *channel.RefundRequest) (*channel.RefundResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("refund request is required")
+	}
+
+	queryReq := alipay.TradeFastPayRefundQuery{
+		OutTradeNo:   req.PlatformNo,
+		OutRequestNo: req.RefundNo,
+		QueryOptions: []string{"refund_detail_item_list"},
+	}
+	resp, err := p.client.TradeFastPayRefundQuery(ctx, queryReq)
+	if err != nil {
+		return nil, fmt.Errorf("alipay refund query failed: %w", err)
+	}
+	if !resp.IsSuccess() {
+		return nil, fmt.Errorf("alipay refund query failed: %s - %s", resp.Code, resp.Msg)
+	}
+
+	refundResp := &channel.RefundResponse{
+		RefundNo:        req.RefundNo,
+		PlatformTradeNo: req.PlatformNo,
+		ExtraData:       map[string]string{},
+	}
+	if resp.OutTradeNo != "" {
+		refundResp.PlatformTradeNo = resp.OutTradeNo
+	}
+	if resp.OutRequestNo != "" {
+		refundResp.RefundNo = resp.OutRequestNo
+	}
+	if resp.TradeNo != "" {
+		refundResp.PlatformRefundNo = resp.TradeNo
+	}
+	if resp.RefundAmount != "" {
+		refundResp.Amount = parseAmount(resp.RefundAmount)
+	}
+	switch resp.RefundStatus {
+	case "REFUND_SUCCESS":
+		refundResp.Status = channel.RefundStatusSuccess
+	case "REFUND_PROCESSING":
+		refundResp.Status = channel.RefundStatusProcessing
+	default:
+		refundResp.Status = channel.RefundStatusPending
+	}
+	if resp.SendBackFee != "" {
+		refundResp.ExtraData["send_back_fee"] = resp.SendBackFee
+	}
+	if resp.TotalAmount != "" {
+		refundResp.ExtraData["total_amount"] = resp.TotalAmount
+	}
+	return refundResp, nil
 }
 
 // Close 关闭资源

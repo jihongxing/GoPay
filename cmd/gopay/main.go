@@ -6,11 +6,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopay/internal/admin"
 	"gopay/internal/config"
 	"gopay/internal/database"
 	"gopay/internal/handler"
+	_ "gopay/internal/metrics"
 	"gopay/internal/service"
+	"gopay/pkg/alert"
 	"gopay/pkg/logger"
 	"gopay/pkg/middleware"
 	"gopay/pkg/version"
@@ -49,9 +52,14 @@ func main() {
 	orderService := service.NewOrderService(db, channelManager)
 	orderService.SetPublicBaseURL(cfg.PublicBaseURL)
 	notifyService := service.NewNotifyService(db, orderService)
+	if cfg.AlertWebhookURL != "" {
+		notifyService.SetAlertManager(alert.NewAlertManager(cfg.AlertWebhookURL))
+	}
+	refundService := service.NewRefundService(db, orderService, channelManager)
 
 	// 初始化 Handler
 	handler.InitServices(orderService)
+	handler.InitRefundService(refundService)
 	handler.InitWebhookServices(channelManager, notifyService)
 
 	// 设置 Gin 模式
@@ -61,6 +69,7 @@ func main() {
 
 	// 创建路由
 	router := gin.Default()
+	router.Use(middleware.PrometheusMetrics())
 
 	// 健康检查
 	router.GET("/health", func(c *gin.Context) {
@@ -95,6 +104,8 @@ func main() {
 		})
 	})
 
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
 	// API 路由组
 	api := router.Group("/api/v1")
 	{
@@ -122,6 +133,8 @@ func main() {
 
 		// 手动重试通知
 		internal.POST("/orders/:order_no/retry", handler.RetryNotify)
+		internal.POST("/orders/:order_no/refund", handler.RefundOrder)
+		internal.GET("/orders/:order_no/refunds/:refund_no", handler.QueryRefund)
 	}
 
 	// 配置管理后台认证

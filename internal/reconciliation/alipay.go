@@ -1,12 +1,19 @@
 package reconciliation
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"database/sql"
 	"encoding/csv"
 	"fmt"
 	"io"
+	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	"github.com/smartwalle/alipay/v3"
 )
 
 // AlipayReconciler 支付宝对账器
@@ -16,10 +23,15 @@ type AlipayReconciler struct {
 }
 
 // NewAlipayReconciler 创建支付宝对账器
-func NewAlipayReconciler() *AlipayReconciler {
+func NewAlipayReconciler(db ...*sql.DB) *AlipayReconciler {
+	var repo OrderRepository = NewOrderRepository()
+	if len(db) > 0 && db[0] != nil {
+		repo = NewDBOrderRepository(db[0])
+	}
+
 	return &AlipayReconciler{
 		billDownloader: NewAlipayBillDownloader(),
-		orderRepo:      NewOrderRepository(),
+		orderRepo:      repo,
 	}
 }
 
@@ -174,38 +186,91 @@ func (r *AlipayReconciler) compare(external []BillRecord, internal []Order) *Rec
 }
 
 // AlipayBillDownloader 支付宝账单下载器
-type AlipayBillDownloader struct{}
+type AlipayBillDownloader struct {
+	client     *alipay.Client
+	httpClient *http.Client
+}
 
 func NewAlipayBillDownloader() *AlipayBillDownloader {
-	return &AlipayBillDownloader{}
+	client, _ := newAlipayBillClientFromEnv()
+	return &AlipayBillDownloader{
+		client: client,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
 }
 
 func (d *AlipayBillDownloader) Download(ctx context.Context, date time.Time) ([]byte, error) {
-	// 调用支付宝 API 下载账单
-	// https://opendocs.alipay.com/open/028wob
-	//
-	// 实现步骤：
-	// 1. 构建请求参数（账单日期、账单类型等）
-	// 2. 使用应用私钥签名请求
-	// 3. 调用支付宝 API
-	// 4. 下载并解析账单文件
-	//
-	// 示例代码：
-	// billDate := date.Format("2006-01-02")
-	// req := alipay.NewAlipayDataDataserviceBillDownloadurlQueryRequest()
-	// req.BizContent = fmt.Sprintf(`{
-	//     "bill_type": "trade",
-	//     "bill_date": "%s"
-	// }`, billDate)
-	//
-	// resp, err := client.Execute(req)
-	// if err != nil {
-	//     return nil, fmt.Errorf("download bill failed: %w", err)
-	// }
-	//
-	// // 下载账单文件
-	// billData, err := downloadBillFile(resp.BillDownloadUrl)
-	// return billData, err
+	if d.client == nil {
+		return nil, fmt.Errorf("alipay bill downloader is not configured")
+	}
 
-	return nil, fmt.Errorf("alipay bill download not implemented: please integrate alipay SDK")
+	billDate := date.Format("2006-01-02")
+	resp, err := d.client.BillDownloadURLQuery(ctx, alipay.BillDownloadURLQuery{
+		BillType: "trade",
+		BillDate: billDate,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("request alipay bill url failed: %w", err)
+	}
+	if !resp.IsSuccess() {
+		return nil, fmt.Errorf("alipay bill url query failed: %s - %s", resp.Code, resp.Msg)
+	}
+	if resp.BillDownloadURL == "" {
+		return nil, fmt.Errorf("alipay bill download url is empty")
+	}
+
+	fileResp, err := d.httpClient.Get(resp.BillDownloadURL)
+	if err != nil {
+		return nil, fmt.Errorf("download alipay bill file failed: %w", err)
+	}
+	defer fileResp.Body.Close()
+
+	body, err := io.ReadAll(fileResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read alipay bill file failed: %w", err)
+	}
+	if bytes.HasPrefix(body, []byte{0x1f, 0x8b}) {
+		reader, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("open gzip bill failed: %w", err)
+		}
+		defer reader.Close()
+		return io.ReadAll(reader)
+	}
+
+	return body, nil
+}
+
+func newAlipayBillClientFromEnv() (*alipay.Client, error) {
+	appID := os.Getenv("ALIPAY_APP_ID")
+	privateKey := os.Getenv("ALIPAY_APP_PRIVATE_KEY")
+	if appID == "" || privateKey == "" {
+		return nil, fmt.Errorf("alipay bill downloader env is incomplete")
+	}
+
+	isProduction := true
+	var opts []alipay.OptionFunc
+	if gateway := os.Getenv("ALIPAY_GATEWAY_URL"); gateway != "" {
+		isProduction = strings.Contains(gateway, "openapi.alipay.com")
+		if isProduction {
+			opts = append(opts, alipay.WithProductionGateway(gateway))
+		} else {
+			opts = append(opts, alipay.WithSandboxGateway(gateway))
+		}
+	}
+
+	client, err := alipay.New(appID, privateKey, isProduction, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	if publicKey := os.Getenv("ALIPAY_PUBLIC_KEY"); publicKey != "" {
+		if err := client.LoadAliPayPublicKey(publicKey); err != nil {
+			return nil, err
+		}
+	}
+
+	return client, nil
 }

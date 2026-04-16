@@ -13,6 +13,7 @@ type Config struct {
 	PublicBaseURL    string
 	AdminAPIKey      string
 	AdminIPWhitelist string
+	AlertWebhookURL  string
 	Database         DatabaseConfig
 	LogLevel         string
 	LogFile          string
@@ -36,6 +37,7 @@ func Load() (*Config, error) {
 		PublicBaseURL:    getEnv("PUBLIC_BASE_URL", "http://localhost:8080"),
 		AdminAPIKey:      getEnv("ADMIN_API_KEY", "default-insecure-key-change-me"),
 		AdminIPWhitelist: getEnv("ADMIN_IP_WHITELIST", "127.0.0.1,::1"),
+		AlertWebhookURL:  getEnv("ALERT_WEBHOOK_URL", ""),
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnvInt("DB_PORT", 5432),

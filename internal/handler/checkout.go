@@ -8,12 +8,18 @@ import (
 )
 
 var (
-	orderService *service.OrderService
+	orderService  *service.OrderService
+	refundService *service.RefundService
 )
 
 // InitServices 初始化服务
 func InitServices(os *service.OrderService) {
 	orderService = os
+}
+
+// InitRefundService 初始化退款服务
+func InitRefundService(rs *service.RefundService) {
+	refundService = rs
 }
 
 // CheckoutRequest 支付请求
@@ -31,10 +37,10 @@ type CheckoutRequest struct {
 // CheckoutResponse 支付响应
 type CheckoutResponse struct {
 	OrderNo  string            `json:"order_no"`
-	PayURL   string            `json:"pay_url,omitempty"`    // Native、H5 使用
-	QRCode   string            `json:"qr_code,omitempty"`    // Native 使用
-	PrepayID string            `json:"prepay_id,omitempty"`  // JSAPI、APP 使用
-	PayInfo  map[string]string `json:"pay_info,omitempty"`   // JSAPI、APP 调起支付参数
+	PayURL   string            `json:"pay_url,omitempty"`   // Native、H5 使用
+	QRCode   string            `json:"qr_code,omitempty"`   // Native 使用
+	PrepayID string            `json:"prepay_id,omitempty"` // JSAPI、APP 使用
+	PayInfo  map[string]string `json:"pay_info,omitempty"`  // JSAPI、APP 调起支付参数
 }
 
 // Checkout 创建支付订单

@@ -23,21 +23,8 @@ type AlertNotifier interface {
 
 // NewScheduler 创建调度器
 func NewScheduler(db *sql.DB, alertNotifier AlertNotifier) *Scheduler {
-	// 创建带数据库连接的对账服务
-	service := &ReconciliationService{
-		wechatReconciler: &WechatReconciler{
-			billDownloader: NewWechatBillDownloader(),
-			orderRepo:      NewDBOrderRepository(db),
-		},
-		alipayReconciler: &AlipayReconciler{
-			billDownloader: NewAlipayBillDownloader(),
-			orderRepo:      NewDBOrderRepository(db),
-		},
-		reportGenerator: NewReportGenerator(),
-	}
-
 	return &Scheduler{
-		service:       service,
+		service:       NewReconciliationService(db),
 		alertNotifier: alertNotifier,
 		stopCh:        make(chan struct{}),
 	}

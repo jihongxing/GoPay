@@ -123,6 +123,11 @@ ADMIN_API_KEY=your-admin-api-key
 ADMIN_IP_WHITELIST=127.0.0.1,192.168.1.100
 ```
 
+**告警配置**
+```bash
+ALERT_WEBHOOK_URL=https://your-alert-webhook
+```
+
 **支付宝配置**
 ```bash
 ALIPAY_APP_ID=your_alipay_app_id
@@ -140,10 +145,10 @@ WECHAT_SERIAL_NO=your_certificate_serial_number
 WECHAT_PRIVATE_KEY_PATH=certs/wechat/apiclient_key.pem
 WECHAT_CERT_PATH=certs/wechat/apiclient_cert.pem
 WECHAT_NOTIFY_URL=https://your-domain.com/api/v1/webhook/wechat
+WECHAT_API_URL=https://api.mch.weixin.qq.com
 ```
 
 > 📖 完整配置说明请查看 `.env.example` 文件
-# - MASTER_KEY (用于加密商户密钥)
 ```
 
 ### 4. 运行数据库迁移
@@ -167,6 +172,11 @@ go run cmd/gopay/main.go
 ```
 
 服务将在 `http://localhost:8080` 启动。
+
+附加接口：
+- `GET /metrics`
+- `POST /internal/api/v1/orders/:order_no/refund`
+- `GET /internal/api/v1/orders/:order_no/refunds/:refund_no`
 
 ### 6. 测试接口
 

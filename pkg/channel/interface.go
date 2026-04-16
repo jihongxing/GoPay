@@ -66,13 +66,36 @@ type WebhookRequest struct {
 
 // WebhookResponse Webhook 响应
 type WebhookResponse struct {
-	Success         bool       // 是否成功
-	OrderID         string     // GoPay 内部订单 ID
-	PlatformTradeNo string     // 第三方平台交易号
+	Success         bool        // 是否成功
+	OrderID         string      // GoPay 内部订单 ID
+	PlatformTradeNo string      // 第三方平台交易号
 	Status          OrderStatus // 订单状态
-	PaidAmount      int64      // 实付金额（分）
-	PaidAt          time.Time  // 支付时间
-	ResponseBody    []byte     // 返回给支付平台的响应体
+	PaidAmount      int64       // 实付金额（分）
+	PaidAt          time.Time   // 支付时间
+	ResponseBody    []byte      // 返回给支付平台的响应体
+}
+
+// RefundRequest 退款请求
+type RefundRequest struct {
+	OrderID    string            // GoPay 内部订单 ID
+	BizOrderNo string            // 业务订单号
+	PlatformNo string            // 第三方订单号
+	RefundNo   string            // 商户退款单号
+	Amount     int64             // 退款金额（分）
+	Reason     string            // 退款原因
+	NotifyURL  string            // 退款回调地址
+	ExtraData  map[string]string // 额外参数
+}
+
+// RefundResponse 退款响应
+type RefundResponse struct {
+	RefundNo         string            // 商户退款单号
+	PlatformTradeNo  string            // 第三方交易号
+	PlatformRefundNo string            // 第三方退款号
+	Status           RefundStatus      // 退款状态
+	Amount           int64             // 退款金额（分）
+	RefundedAt       *time.Time        // 退款完成时间
+	ExtraData        map[string]string // 额外返回数据
 }
 
 // OrderStatus 订单状态
@@ -83,6 +106,16 @@ const (
 	OrderStatusPaid    OrderStatus = "PAID"    // 已支付
 	OrderStatusClosed  OrderStatus = "CLOSED"  // 已关闭
 	OrderStatusRefund  OrderStatus = "REFUND"  // 已退款
+)
+
+// RefundStatus 退款状态
+type RefundStatus string
+
+const (
+	RefundStatusPending    RefundStatus = "PENDING"
+	RefundStatusSuccess    RefundStatus = "SUCCESS"
+	RefundStatusFailed     RefundStatus = "FAILED"
+	RefundStatusProcessing RefundStatus = "PROCESSING"
 )
 
 // NotifyStatus 通知状态
