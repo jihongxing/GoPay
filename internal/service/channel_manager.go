@@ -93,6 +93,74 @@ func (m *ChannelManager) GetProvider(appID, channelName string) (channel.Payment
 	return provider, nil
 }
 
+// ListProvidersByChannelPrefix 列出指定前缀的全部可用 Provider
+func (m *ChannelManager) ListProvidersByChannelPrefix(prefix string) ([]channel.PaymentChannel, error) {
+	if m.db == nil {
+		return nil, fmt.Errorf("channel manager is not initialized")
+	}
+
+	rows, err := m.db.Query(`
+		SELECT id, app_id, channel, config, status, created_at, updated_at
+		FROM channel_configs
+		WHERE channel LIKE $1 AND status = 'active'
+		ORDER BY updated_at DESC
+	`, prefix+"%")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list channel providers: %w", err)
+	}
+	defer rows.Close()
+
+	var providers []channel.PaymentChannel
+	var lastErr error
+
+	for rows.Next() {
+		var config models.ChannelConfig
+		if err := rows.Scan(
+			&config.ID,
+			&config.AppID,
+			&config.Channel,
+			&config.Config,
+			&config.Status,
+			&config.CreatedAt,
+			&config.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan channel config: %w", err)
+		}
+
+		key := fmt.Sprintf("%s_%s", config.AppID, config.Channel)
+		m.mu.RLock()
+		provider, exists := m.providers[key]
+		m.mu.RUnlock()
+		if exists {
+			providers = append(providers, provider)
+			continue
+		}
+
+		provider, err := m.createProvider(config.Channel, config.Config)
+		if err != nil {
+			lastErr = err
+			logger.Error("Failed to create provider for fallback: appID=%s, channel=%s, err=%v", config.AppID, config.Channel, err)
+			continue
+		}
+
+		m.mu.Lock()
+		m.providers[key] = provider
+		m.mu.Unlock()
+
+		providers = append(providers, provider)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate channel providers: %w", err)
+	}
+
+	if len(providers) == 0 && lastErr != nil {
+		return nil, lastErr
+	}
+
+	return providers, nil
+}
+
 // createProvider 根据渠道类型创建 Provider
 func (m *ChannelManager) createProvider(channelName, configJSON string) (channel.PaymentChannel, error) {
 	switch channelName {
