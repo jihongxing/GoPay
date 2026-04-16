@@ -11,7 +11,7 @@ import (
 
 // AlipayReconciler 支付宝对账器
 type AlipayReconciler struct {
-	billDownloader *AlipayBillDownloader
+	billDownloader BillDownloader
 	orderRepo      OrderRepository
 }
 
@@ -97,10 +97,10 @@ func (r *AlipayReconciler) parseBill(data []byte) ([]BillRecord, error) {
 		}
 
 		record := BillRecord{
-			TransactionID: row[0],  // 交易号
-			OrderNo:       row[1],  // 商户订单号
+			TransactionID: row[0],                    // 交易号
+			OrderNo:       row[1],                    // 商户订单号
 			Amount:        parseAlipayAmount(row[9]), // 金额（元）
-			Status:        row[11], // 交易状态
+			Status:        row[11],                   // 交易状态
 			Channel:       "alipay",
 		}
 

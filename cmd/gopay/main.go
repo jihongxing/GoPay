@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +13,7 @@ import (
 	"gopay/internal/service"
 	"gopay/pkg/logger"
 	"gopay/pkg/middleware"
+	"gopay/pkg/version"
 )
 
 func main() {
@@ -47,6 +47,7 @@ func main() {
 	// 初始化服务层
 	channelManager := service.NewChannelManager(db)
 	orderService := service.NewOrderService(db, channelManager)
+	orderService.SetPublicBaseURL(cfg.PublicBaseURL)
 	notifyService := service.NewNotifyService(db, orderService)
 
 	// 初始化 Handler
@@ -69,7 +70,7 @@ func main() {
 			"data": gin.H{
 				"status":  "healthy",
 				"service": "gopay",
-				"version": "1.0.0",
+				"version": version.Version,
 			},
 		})
 	})
@@ -88,7 +89,7 @@ func main() {
 			"data": gin.H{
 				"status":   "healthy",
 				"service":  "gopay",
-				"version":  "1.0.0",
+				"version":  version.Version,
 				"database": dbStatus,
 			},
 		})
@@ -111,14 +112,7 @@ func main() {
 	{
 		// 配置认证中间件
 		authConfig := middleware.NewAuthConfig()
-
-		// 从环境变量读取 API Key
-		adminAPIKey := os.Getenv("ADMIN_API_KEY")
-		if adminAPIKey == "" {
-			logger.Info("ADMIN_API_KEY not set, using default (INSECURE for production!)")
-			adminAPIKey = "default-insecure-key-change-me"
-		}
-		authConfig.AddAPIKey(adminAPIKey)
+		authConfig.AddAPIKey(cfg.AdminAPIKey)
 
 		// 应用认证中间件
 		internal.Use(middleware.APIKeyAuth(authConfig))
@@ -132,18 +126,13 @@ func main() {
 
 	// 配置管理后台认证
 	adminAuthConfig := middleware.NewAuthConfig()
-	adminAPIKey := os.Getenv("ADMIN_API_KEY")
-	if adminAPIKey == "" {
-		logger.Info("ADMIN_API_KEY not set, using default (INSECURE for production!)")
-		adminAPIKey = "default-insecure-key-change-me"
-	}
-	adminAuthConfig.AddAPIKey(adminAPIKey)
+	adminAuthConfig.AddAPIKey(cfg.AdminAPIKey)
 
 	// 构建认证中间件列表
 	var adminMiddlewares []gin.HandlerFunc
 
 	// 可选：添加 IP 白名单
-	ipWhitelist := os.Getenv("ADMIN_IP_WHITELIST")
+	ipWhitelist := cfg.AdminIPWhitelist
 	if ipWhitelist != "" {
 		// 支持逗号分隔的 IP 列表
 		ips := strings.Split(ipWhitelist, ",")

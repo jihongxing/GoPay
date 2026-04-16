@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"gopay/internal/models"
@@ -23,6 +24,7 @@ type ChannelManagerInterface interface {
 type OrderService struct {
 	db             *sql.DB
 	channelManager ChannelManagerInterface
+	publicBaseURL  string
 }
 
 // NewOrderService 创建订单服务
@@ -30,18 +32,27 @@ func NewOrderService(db *sql.DB, channelManager ChannelManagerInterface) *OrderS
 	return &OrderService{
 		db:             db,
 		channelManager: channelManager,
+		publicBaseURL:  "http://localhost:8080",
 	}
+}
+
+// SetPublicBaseURL 设置对外访问地址
+func (s *OrderService) SetPublicBaseURL(baseURL string) {
+	if baseURL == "" {
+		return
+	}
+	s.publicBaseURL = baseURL
 }
 
 // CreateOrderRequest 创建订单请求
 type CreateOrderRequest struct {
-	AppID      string `json:"app_id" binding:"required"`
-	OutTradeNo string `json:"out_trade_no" binding:"required"`
-	Amount     int64  `json:"amount" binding:"required,gt=0"`
-	Subject    string `json:"subject" binding:"required"`
-	Body       string `json:"body"`
-	Channel    string `json:"channel" binding:"required"`
-	NotifyURL  string `json:"notify_url"`
+	AppID      string            `json:"app_id" binding:"required"`
+	OutTradeNo string            `json:"out_trade_no" binding:"required"`
+	Amount     int64             `json:"amount" binding:"required,gt=0"`
+	Subject    string            `json:"subject" binding:"required"`
+	Body       string            `json:"body"`
+	Channel    string            `json:"channel" binding:"required"`
+	NotifyURL  string            `json:"notify_url"`
 	ExtraData  map[string]string `json:"extra_data"`
 }
 
@@ -490,7 +501,9 @@ func (s *OrderService) generateOrderNo() string {
 
 // buildWebhookURL 构建 Webhook 回调地址
 func (s *OrderService) buildWebhookURL(channel string) string {
-	// TODO: 从配置读取域名
-	baseURL := "http://localhost:8080"
-	return fmt.Sprintf("%s/api/v1/webhook/%s", baseURL, channel)
+	baseURL := s.publicBaseURL
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	return fmt.Sprintf("%s/api/v1/webhook/%s", strings.TrimRight(baseURL, "/"), channel)
 }

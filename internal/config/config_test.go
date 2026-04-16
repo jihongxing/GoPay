@@ -8,10 +8,18 @@ import (
 // TestLoad 测试加载配置
 func TestLoad(t *testing.T) {
 	// 设置测试环境变量
+	os.Setenv("SERVER_ENV", "development")
+	os.Setenv("PUBLIC_BASE_URL", "http://localhost:8080")
+	os.Setenv("ADMIN_API_KEY", "test_admin_key")
+	os.Setenv("ADMIN_IP_WHITELIST", "127.0.0.1,::1")
 	os.Setenv("DB_PASSWORD", "test_password")
 	os.Setenv("DB_USER", "test_user")
 	os.Setenv("DB_NAME", "test_db")
 	defer func() {
+		os.Unsetenv("SERVER_ENV")
+		os.Unsetenv("PUBLIC_BASE_URL")
+		os.Unsetenv("ADMIN_API_KEY")
+		os.Unsetenv("ADMIN_IP_WHITELIST")
 		os.Unsetenv("DB_PASSWORD")
 		os.Unsetenv("DB_USER")
 		os.Unsetenv("DB_NAME")
@@ -31,12 +39,23 @@ func TestLoad(t *testing.T) {
 	if cfg.Database.DBName != "test_db" {
 		t.Errorf("DBName = %v, want test_db", cfg.Database.DBName)
 	}
+	if cfg.PublicBaseURL != "http://localhost:8080" {
+		t.Errorf("PublicBaseURL = %v, want http://localhost:8080", cfg.PublicBaseURL)
+	}
+	if cfg.AdminAPIKey != "test_admin_key" {
+		t.Errorf("AdminAPIKey = %v, want test_admin_key", cfg.AdminAPIKey)
+	}
+	if cfg.AdminIPWhitelist != "127.0.0.1,::1" {
+		t.Errorf("AdminIPWhitelist = %v, want 127.0.0.1,::1", cfg.AdminIPWhitelist)
+	}
 }
 
 // TestLoad_MissingPassword 测试缺少密码
 func TestLoad_MissingPassword(t *testing.T) {
 	// 清除密码环境变量
+	os.Setenv("SERVER_ENV", "development")
 	os.Unsetenv("DB_PASSWORD")
+	defer os.Unsetenv("SERVER_ENV")
 
 	_, err := Load()
 	if err == nil {
@@ -95,6 +114,36 @@ func TestValidate(t *testing.T) {
 				},
 			},
 			wantErr: true,
+		},
+		{
+			name: "production with insecure admin config",
+			cfg: &Config{
+				ServerPort:    "8080",
+				ServerEnv:     "production",
+				PublicBaseURL: "http://localhost:8080",
+				AdminAPIKey:   "default-insecure-key-change-me",
+				Database: DatabaseConfig{
+					User:     "test_user",
+					Password: "test_password",
+					DBName:   "test_db",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "production config ok",
+			cfg: &Config{
+				ServerPort:    "8080",
+				ServerEnv:     "production",
+				PublicBaseURL: "https://pay.example.com",
+				AdminAPIKey:   "secure_admin_key",
+				Database: DatabaseConfig{
+					User:     "test_user",
+					Password: "test_password",
+					DBName:   "test_db",
+				},
+			},
+			wantErr: false,
 		},
 	}
 

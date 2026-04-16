@@ -11,7 +11,7 @@ import (
 
 // WechatReconciler 微信对账器
 type WechatReconciler struct {
-	billDownloader *WechatBillDownloader
+	billDownloader BillDownloader
 	orderRepo      OrderRepository
 }
 
@@ -86,10 +86,10 @@ func (r *WechatReconciler) parseBill(data []byte) ([]BillRecord, error) {
 		}
 
 		record := BillRecord{
-			TransactionID: row[5], // 微信订单号
-			OrderNo:       row[6], // 商户订单号
+			TransactionID: row[5],                     // 微信订单号
+			OrderNo:       row[6],                     // 商户订单号
 			Amount:        parseWechatAmount(row[12]), // 应结订单金额
-			Status:        row[9], // 交易状态
+			Status:        row[9],                     // 交易状态
 			Channel:       "wechat",
 		}
 

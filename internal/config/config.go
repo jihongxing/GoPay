@@ -8,11 +8,14 @@ import (
 
 // Config 应用配置
 type Config struct {
-	ServerPort string
-	ServerEnv  string
-	Database   DatabaseConfig
-	LogLevel   string
-	LogFile    string
+	ServerPort       string
+	ServerEnv        string
+	PublicBaseURL    string
+	AdminAPIKey      string
+	AdminIPWhitelist string
+	Database         DatabaseConfig
+	LogLevel         string
+	LogFile          string
 }
 
 // DatabaseConfig 数据库配置
@@ -28,8 +31,11 @@ type DatabaseConfig struct {
 // Load 加载配置
 func Load() (*Config, error) {
 	cfg := &Config{
-		ServerPort: getEnv("SERVER_PORT", "8080"),
-		ServerEnv:  getEnv("SERVER_ENV", "development"),
+		ServerPort:       getEnv("SERVER_PORT", "8080"),
+		ServerEnv:        getEnv("SERVER_ENV", "development"),
+		PublicBaseURL:    getEnv("PUBLIC_BASE_URL", "http://localhost:8080"),
+		AdminAPIKey:      getEnv("ADMIN_API_KEY", "default-insecure-key-change-me"),
+		AdminIPWhitelist: getEnv("ADMIN_IP_WHITELIST", "127.0.0.1,::1"),
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnvInt("DB_PORT", 5432),
@@ -63,6 +69,14 @@ func (c *Config) Validate() error {
 	}
 	if c.ServerPort == "" {
 		return fmt.Errorf("SERVER_PORT is required")
+	}
+	if c.ServerEnv == "production" {
+		if c.AdminAPIKey == "" || c.AdminAPIKey == "default-insecure-key-change-me" {
+			return fmt.Errorf("ADMIN_API_KEY is required in production")
+		}
+		if c.PublicBaseURL == "" || c.PublicBaseURL == "http://localhost:8080" {
+			return fmt.Errorf("PUBLIC_BASE_URL must point to a public domain in production")
+		}
 	}
 	return nil
 }

@@ -14,14 +14,23 @@ import (
 	"gopay/pkg/logger"
 )
 
+var newWechatClient = core.NewClient
+var newWechatWebhookHandler = func(mchID, apiV3Key, mchCertSerialNo string, mchPrivateKey string) (wechatWebhookHandler, error) {
+	return NewWebhookHandler(mchID, apiV3Key, mchCertSerialNo, mchPrivateKey)
+}
+
+type wechatWebhookHandler interface {
+	HandleWebhook(ctx context.Context, req *channel.WebhookRequest) (*channel.WebhookResponse, error)
+}
+
 // Provider 微信支付 Provider
 type Provider struct {
-	mchID          string
-	serialNo       string
-	apiV3Key       string
-	privateKey     *rsa.PrivateKey
-	client         *core.Client
-	nativeService  *native.NativeApiService
+	mchID         string
+	serialNo      string
+	apiV3Key      string
+	privateKey    *rsa.PrivateKey
+	client        *core.Client
+	nativeService *native.NativeApiService
 }
 
 // Config 微信支付配置
@@ -46,7 +55,7 @@ func NewProvider(cfg *Config) (*Provider, error) {
 		option.WithWechatPayAutoAuthCipher(cfg.MchID, cfg.SerialNo, privateKey, cfg.APIV3Key),
 	}
 
-	client, err := core.NewClient(ctx, opts...)
+	client, err := newWechatClient(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create wechat pay client: %w", err)
 	}
@@ -160,7 +169,7 @@ func (p *Provider) HandleWebhook(ctx context.Context, req *channel.WebhookReques
 	logger.Info("Handling wechat webhook, body length=%d", len(req.RawBody))
 
 	// 使用 WebhookHandler 处理（使用官方 SDK 验证签名）
-	handler, err := NewWebhookHandler(p.mchID, p.apiV3Key, p.serialNo, "")
+	handler, err := newWechatWebhookHandler(p.mchID, p.apiV3Key, p.serialNo, "")
 	if err != nil {
 		logger.Error("Failed to create webhook handler: %v", err)
 		return &channel.WebhookResponse{

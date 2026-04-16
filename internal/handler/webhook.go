@@ -15,12 +15,16 @@ import (
 )
 
 var (
-	channelManager *service.ChannelManager
+	channelManager webhookChannelManager
 	notifyService  *service.NotifyService
 )
 
+type webhookChannelManager interface {
+	GetProvider(appID, channelName string) (channel.PaymentChannel, error)
+}
+
 // InitWebhookServices 初始化 Webhook 相关服务
-func InitWebhookServices(cm *service.ChannelManager, ns *service.NotifyService) {
+func InitWebhookServices(cm webhookChannelManager, ns *service.NotifyService) {
 	channelManager = cm
 	notifyService = ns
 }

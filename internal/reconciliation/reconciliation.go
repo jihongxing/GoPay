@@ -12,6 +12,11 @@ type ReconciliationService struct {
 	reportGenerator  *ReportGenerator
 }
 
+// BillDownloader 账单下载器接口
+type BillDownloader interface {
+	Download(ctx context.Context, date time.Time) ([]byte, error)
+}
+
 // NewReconciliationService 创建对账服务
 func NewReconciliationService() *ReconciliationService {
 	return &ReconciliationService{
@@ -23,23 +28,23 @@ func NewReconciliationService() *ReconciliationService {
 
 // ReconcileResult 对账结果
 type ReconcileResult struct {
-	Date           time.Time         // 对账日期
-	Channel        string            // 支付渠道
-	TotalOrders    int               // 总订单数
-	MatchedOrders  int               // 匹配订单数
-	MissingOrders  []string          // 长款（外部有但内部无）
-	ExtraOrders    []string          // 短款（内部有但外部无）
-	AmountMismatch []AmountMismatch  // 金额不匹配
-	Status         string            // 对账状态
-	CreatedAt      time.Time         // 创建时间
+	Date           time.Time        // 对账日期
+	Channel        string           // 支付渠道
+	TotalOrders    int              // 总订单数
+	MatchedOrders  int              // 匹配订单数
+	MissingOrders  []string         // 长款（外部有但内部无）
+	ExtraOrders    []string         // 短款（内部有但外部无）
+	AmountMismatch []AmountMismatch // 金额不匹配
+	Status         string           // 对账状态
+	CreatedAt      time.Time        // 创建时间
 }
 
 // AmountMismatch 金额不匹配记录
 type AmountMismatch struct {
-	OrderNo        string  // 订单号
-	InternalAmount int64   // 内部金额
-	ExternalAmount int64   // 外部金额
-	Difference     int64   // 差额
+	OrderNo        string // 订单号
+	InternalAmount int64  // 内部金额
+	ExternalAmount int64  // 外部金额
+	Difference     int64  // 差额
 }
 
 // BillRecord 账单记录
