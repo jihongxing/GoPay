@@ -196,6 +196,18 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, orderNo string, st
 
 	// 检查状态是否可以更新（防止重复更新）
 	if currentStatus == models.OrderStatusPaid {
+		if status == models.OrderStatusRefunded {
+			// 支持 paid -> refunded
+		} else {
+			logger.Info("Order already paid, skip update: orderNo=%s", orderNo)
+			return errors.NewOrderPaidError(orderNo)
+		}
+	}
+
+	if currentStatus == models.OrderStatusRefunded {
+		if status == models.OrderStatusRefunded {
+			return nil
+		}
 		logger.Info("Order already paid, skip update: orderNo=%s", orderNo)
 		return errors.NewOrderPaidError(orderNo)
 	}

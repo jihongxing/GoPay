@@ -23,10 +23,16 @@ import (
 type webhookTestChannelManager struct {
 	provider channel.PaymentChannel
 	err      error
+	providers []channel.PaymentChannel
+	listErr   error
 }
 
 func (m *webhookTestChannelManager) GetProvider(appID, channelName string) (channel.PaymentChannel, error) {
 	return m.provider, m.err
+}
+
+func (m *webhookTestChannelManager) ListProvidersByChannelPrefix(prefix string) ([]channel.PaymentChannel, error) {
+	return m.providers, m.listErr
 }
 
 type webhookErrorBody struct{}
@@ -230,6 +236,41 @@ func TestWechatWebhook_Branches(t *testing.T) {
 							PlatformTradeNo: "WX_001",
 							ResponseBody:    []byte("success"),
 						}, nil
+					},
+				},
+			},
+			status:   http.StatusOK,
+			wantBody: "success",
+		},
+		{
+			name: "refund fallback without out_trade_no",
+			body: io.NopCloser(strings.NewReader(`{"event_type":"REFUND.SUCCESS"}`)),
+			orderSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery("SELECT (.+) FROM orders WHERE out_trade_no = \\$1").
+					WithArgs("OUT_REF_001").
+					WillReturnRows(newWebhookOrderRows("ORD_001", "test_app", "OUT_REF_001", models.ChannelWechatNative))
+			},
+			manager: &webhookTestChannelManager{
+				provider: &MockPaymentChannel{
+					handleWebhookFunc: func(context.Context, *channel.WebhookRequest) (*channel.WebhookResponse, error) {
+						return &channel.WebhookResponse{
+							Success:         true,
+							Status:          channel.OrderStatusPending,
+							PlatformTradeNo: "OUT_REF_001",
+							ResponseBody:    []byte("success"),
+						}, nil
+					},
+				},
+				providers: []channel.PaymentChannel{
+					&MockPaymentChannel{
+						handleWebhookFunc: func(context.Context, *channel.WebhookRequest) (*channel.WebhookResponse, error) {
+							return &channel.WebhookResponse{
+								Success:         true,
+								Status:          channel.OrderStatusPending,
+								PlatformTradeNo: "OUT_REF_001",
+								ResponseBody:    []byte("success"),
+							}, nil
+						},
 					},
 				},
 			},
