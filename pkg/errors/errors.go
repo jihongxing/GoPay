@@ -34,6 +34,10 @@ const (
 	// 参数相关错误
 	TypeInvalidRequest
 	TypeInvalidChannel
+
+	// 认证相关错误
+	TypeTimestampExpired
+	TypeNonceReplay
 )
 
 // 定义业务错误类型（用于 errors.Is 判断）

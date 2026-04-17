@@ -94,7 +94,7 @@ func TestSignatureAuth_ExpiredTimestamp(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
-	assert.Contains(t, w.Body.String(), "过期")
+	assert.Contains(t, w.Body.String(), "TIMESTAMP_EXPIRED")
 }
 
 func TestSignatureAuth_InvalidSignature(t *testing.T) {
@@ -120,7 +120,7 @@ func TestSignatureAuth_InvalidSignature(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
-	assert.Contains(t, w.Body.String(), "签名验证失败")
+	assert.Contains(t, w.Body.String(), "SIGNATURE_INVALID")
 }
 
 func TestSignatureAuth_AppNotFound(t *testing.T) {
@@ -171,7 +171,7 @@ func TestSignatureAuth_DisabledApp(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
-	assert.Contains(t, w.Body.String(), "禁用")
+	assert.Contains(t, w.Body.String(), "APP_INACTIVE")
 }
 
 func TestSignatureAuth_NonceReplay(t *testing.T) {
@@ -211,7 +211,7 @@ func TestSignatureAuth_NonceReplay(t *testing.T) {
 	req2.Header.Set("X-Signature", sig)
 	router.ServeHTTP(w2, req2)
 	assert.Equal(t, 401, w2.Code)
-	assert.Contains(t, w2.Body.String(), "nonce")
+	assert.Contains(t, w2.Body.String(), "NONCE_REPLAY")
 }
 
 // Suppress unused import warning

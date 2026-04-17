@@ -2,11 +2,11 @@ package response
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	pkgerrors "gopay/pkg/errors"
+
+	"github.com/gin-gonic/gin"
 )
 
 // ErrorCode 错误码
@@ -14,13 +14,13 @@ type ErrorCode string
 
 const (
 	// 通用错误码
-	ErrInvalidRequest   ErrorCode = "INVALID_REQUEST"
-	ErrInternalError    ErrorCode = "INTERNAL_ERROR"
-	ErrUnauthorized     ErrorCode = "UNAUTHORIZED"
-	ErrForbidden        ErrorCode = "FORBIDDEN"
-	ErrNotFound         ErrorCode = "NOT_FOUND"
-	ErrConflict         ErrorCode = "CONFLICT"
-	ErrTooManyRequests  ErrorCode = "TOO_MANY_REQUESTS"
+	ErrInvalidRequest  ErrorCode = "INVALID_REQUEST"
+	ErrInternalError   ErrorCode = "INTERNAL_ERROR"
+	ErrUnauthorized    ErrorCode = "UNAUTHORIZED"
+	ErrForbidden       ErrorCode = "FORBIDDEN"
+	ErrNotFound        ErrorCode = "NOT_FOUND"
+	ErrConflict        ErrorCode = "CONFLICT"
+	ErrTooManyRequests ErrorCode = "TOO_MANY_REQUESTS"
 
 	// 业务错误码
 	ErrAppNotFound      ErrorCode = "APP_NOT_FOUND"
@@ -36,13 +36,15 @@ const (
 	ErrPaymentFailed    ErrorCode = "PAYMENT_FAILED"
 	ErrNotifyFailed     ErrorCode = "NOTIFY_FAILED"
 	ErrSignatureInvalid ErrorCode = "SIGNATURE_INVALID"
+	ErrTimestampExpired ErrorCode = "TIMESTAMP_EXPIRED"
+	ErrNonceReplay      ErrorCode = "NONCE_REPLAY"
 )
 
 // ErrorResponse 统一错误响应
 type ErrorResponse struct {
-	Code    ErrorCode `json:"code"`              // 错误码
-	Message string    `json:"message"`           // 错误消息
-	Details string    `json:"details,omitempty"` // 详细信息（可选）
+	Code    ErrorCode         `json:"code"`              // 错误码
+	Message string            `json:"message"`           // 错误消息
+	Details map[string]string `json:"details,omitempty"` // 结构化详细信息（可选）
 }
 
 // SuccessResponse 统一成功响应
@@ -58,10 +60,19 @@ func Error(c *gin.Context, httpStatus int, code ErrorCode, message string, detai
 		Code:    code,
 		Message: message,
 	}
-	if len(details) > 0 {
-		resp.Details = details[0]
+	if len(details) > 0 && details[0] != "" {
+		resp.Details = map[string]string{"detail": details[0]}
 	}
 	c.JSON(httpStatus, resp)
+}
+
+// ErrorWithDetails 返回带结构化详情的错误响应
+func ErrorWithDetails(c *gin.Context, httpStatus int, code ErrorCode, message string, details map[string]string) {
+	c.JSON(httpStatus, ErrorResponse{
+		Code:    code,
+		Message: message,
+		Details: details,
+	})
 }
 
 // Success 返回成功响应
@@ -174,24 +185,7 @@ func handleBusinessError(c *gin.Context, bizErr *pkgerrors.BusinessError) {
 	}
 
 	// 格式化详细信息
-	details := formatDetails(bizErr.GetDetails())
-	Error(c, httpStatus, code, message, details)
-}
-
-// formatDetails 格式化详细信息
-func formatDetails(details map[string]string) string {
-	if len(details) == 0 {
-		return ""
-	}
-
-	result := ""
-	for k, v := range details {
-		if result != "" {
-			result += ", "
-		}
-		result += fmt.Sprintf("%s: %s", k, v)
-	}
-	return result
+	ErrorWithDetails(c, httpStatus, code, message, bizErr.GetDetails())
 }
 
 // 便捷方法

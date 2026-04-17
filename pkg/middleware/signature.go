@@ -35,7 +35,8 @@ func SignatureAuth(db *sql.DB, nonceChecker NonceChecker) gin.HandlerFunc {
 		signature := c.GetHeader("X-Signature")
 
 		if appID == "" || timestampStr == "" || nonce == "" || signature == "" {
-			response.Unauthorized(c, "缺少签名参数（需要 X-App-ID, X-Timestamp, X-Nonce, X-Signature）")
+			response.Error(c, 401, response.ErrUnauthorized,
+				"缺少签名参数", "需要 X-App-ID, X-Timestamp, X-Nonce, X-Signature")
 			c.Abort()
 			return
 		}
@@ -43,20 +44,20 @@ func SignatureAuth(db *sql.DB, nonceChecker NonceChecker) gin.HandlerFunc {
 		// 1. 验证时间戳（5 分钟内有效）
 		timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
 		if err != nil {
-			response.BadRequest(c, "X-Timestamp 格式错误")
+			response.Error(c, 400, response.ErrInvalidRequest, "X-Timestamp 格式错误")
 			c.Abort()
 			return
 		}
 		now := time.Now().Unix()
 		if abs(now-timestamp) > 300 {
-			response.Unauthorized(c, "签名已过期")
+			response.Error(c, 401, response.ErrTimestampExpired, "签名已过期")
 			c.Abort()
 			return
 		}
 
 		// 2. 验证 nonce（防重放）
 		if nonceChecker != nil && !nonceChecker.Check(nonce) {
-			response.Unauthorized(c, "请求已被使用（nonce 重复）")
+			response.Error(c, 401, response.ErrNonceReplay, "请求已被使用（nonce 重复）")
 			c.Abort()
 			return
 		}
@@ -69,12 +70,12 @@ func SignatureAuth(db *sql.DB, nonceChecker NonceChecker) gin.HandlerFunc {
 		).Scan(&appSecret, &status)
 		if err != nil {
 			logger.Error("Signature auth: app not found, app_id=%s", appID)
-			response.Unauthorized(c, "应用不存在")
+			response.Error(c, 401, response.ErrAppNotFound, "应用不存在")
 			c.Abort()
 			return
 		}
 		if status != "active" {
-			response.Unauthorized(c, "应用已禁用")
+			response.Error(c, 401, response.ErrAppInactive, "应用已禁用")
 			c.Abort()
 			return
 		}
@@ -97,7 +98,7 @@ func SignatureAuth(db *sql.DB, nonceChecker NonceChecker) gin.HandlerFunc {
 
 		if !hmac.Equal([]byte(signature), []byte(expectedSig)) {
 			logger.Error("Signature auth: invalid signature, app_id=%s", appID)
-			response.Unauthorized(c, "签名验证失败")
+			response.Error(c, 401, response.ErrSignatureInvalid, "签名验证失败")
 			c.Abort()
 			return
 		}

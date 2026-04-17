@@ -6,8 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	pkgerrors "gopay/pkg/errors"
+
+	"github.com/gin-gonic/gin"
 )
 
 func init() {
@@ -164,36 +165,20 @@ func TestHandleError_StandardError(t *testing.T) {
 	}
 }
 
-// TestFormatDetails 测试格式化详细信息
-func TestFormatDetails(t *testing.T) {
-	tests := []struct {
-		name    string
-		details map[string]string
-		want    string
-	}{
-		{
-			name:    "empty details",
-			details: map[string]string{},
-			want:    "",
-		},
-		{
-			name: "single detail",
-			details: map[string]string{
-				"key": "value",
-			},
-			want: "key: value",
-		},
+// TestErrorWithDetails 测试带结构化详情的错误响应
+func TestErrorWithDetails(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	details := map[string]string{"app_id": "test_app", "channel": "wechat_native"}
+	ErrorWithDetails(c, http.StatusNotFound, ErrChannelNotFound, "支付渠道不存在", details)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Status code = %d, want %d", w.Code, http.StatusNotFound)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatDetails(tt.details)
-			if tt.name == "empty details" && got != tt.want {
-				t.Errorf("formatDetails() = %v, want %v", got, tt.want)
-			}
-			if tt.name == "single detail" && got != tt.want {
-				t.Errorf("formatDetails() = %v, want %v", got, tt.want)
-			}
-		})
+	body := w.Body.String()
+	if body == "" {
+		t.Error("Response body is empty")
 	}
 }
