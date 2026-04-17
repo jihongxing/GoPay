@@ -36,16 +36,18 @@
 
 ## 🎉 核心特性
 
-- ✅ **多渠道支持**: 微信支付（Native/JSAPI/H5/APP）+ 支付宝（扫码/Wap/APP/当面付）
+- ✅ **多渠道支持**: 微信支付（Native/JSAPI/H5/APP）+ 支付宝（扫码/Wap/APP/当面付）+ Stripe（脚手架）
 - ✅ **多业务隔离**: 一套商户号对应多个业务系统，配置独立
 - ✅ **统一接口**: 业务系统无需关心底层渠道差异
 - ✅ **异步回调**: 支持 HTTP 回调，带超时和重试机制
-- ✅ **T+1 对账**: 自动下载账单、比对差异、生成报告
+- ✅ **退款功能**: 全额/部分退款、退款查询、退款回调通知
+- ✅ **T+1 对账**: 自动下载账单、比对差异、生成报告、告警通知
 - ✅ **管理后台**: Web 界面管理订单、查看对账报告、操作日志
 - ✅ **数据可视化**: 订单趋势图、渠道分布图、实时统计
-- ✅ **安全可靠**: AES-256-GCM 加密存储密钥，签名验证防伪造
+- ✅ **安全可靠**: AES-256-GCM 加密、签名验证、日志脱敏、证书监控
+- ✅ **可观测性**: Prometheus 监控、请求追踪、告警通知
 - ✅ **高性能**: 单机支持 10k+ QPS，响应时间 < 5ms
-- ✅ **易部署**: Docker Compose 一键部署
+- ✅ **易部署**: Docker Compose 一键部署，Helm Chart 支持
 
 ---
 
@@ -61,6 +63,7 @@
 | | 手机网站支付 | 手机浏览器 | ✅ |
 | | APP 支付 | 原生应用 | ✅ |
 | | 当面付 | 线下收银 | ✅ |
+| **Stripe** | Checkout | 国际支付 | 🚧 脚手架 |
 
 ---
 
@@ -221,25 +224,36 @@ curl -X POST http://localhost:8080/api/v1/checkout \
 
 ```
 GoPay/
-├── cmd/gopay/          # 主程序入口
-├── internal/           # 内部代码（不对外暴露）
-│   ├── config/         # 配置管理
-│   ├── database/       # 数据库连接
-│   ├── models/         # 数据模型
-│   ├── service/        # 业务逻辑
-│   └── handler/        # HTTP 处理器
-├── pkg/                # 可复用的公共库
-│   ├── channel/        # 支付渠道接口
-│   │   ├── wechat/     # 微信支付实现
-│   │   └── alipay/     # 支付宝实现
-│   └── errors/         # 错误定义
-├── examples/           # 示例项目
-│   ├── go-client/      # Go 客户端示例
-│   ├── nodejs-client/  # Node.js 客户端示例
-│   └── python-client/  # Python 客户端示例
-├── migrations/         # 数据库迁移脚本
-├── docs/               # 项目文档
-└── scripts/            # 工具脚本
+├── cmd/
+│   ├── gopay/              # 主程序入口
+│   ├── migrate/            # 数据库迁移工具
+│   ├── reconciliation/     # 对账命令行工具
+│   └── rotate-keys/        # 密钥轮换工具
+├── internal/               # 内部代码（不对外暴露）
+│   ├── admin/              # 管理后台（Web + 配置管理）
+│   ├── config/             # 配置管理
+│   ├── database/           # 数据库连接与迁移
+│   ├── handler/            # HTTP 处理器
+│   ├── metrics/            # Prometheus 指标
+│   ├── models/             # 数据模型
+│   ├── reconciliation/     # T+1 对账服务
+│   └── service/            # 业务逻辑层
+├── pkg/                    # 可复用的公共库
+│   ├── alert/              # 告警通知（Webhook/钉钉）
+│   ├── channel/            # 支付渠道接口
+│   │   ├── alipay/         # 支付宝实现
+│   │   ├── stripe/         # Stripe 实现（脚手架）
+│   │   └── wechat/         # 微信支付实现
+│   ├── errors/             # 统一错误定义
+│   ├── logger/             # 日志（含脱敏）
+│   ├── middleware/         # 中间件（认证/限流/追踪/监控）
+│   ├── security/           # 加密与证书管理
+│   └── version/            # 版本信息
+├── examples/               # 多语言客户端示例
+├── migrations/             # 数据库迁移脚本
+├── docker/                 # Grafana/Prometheus 配置
+├── helm/                   # Kubernetes Helm Chart
+└── docs/                   # 项目文档
 ```
 
 ---
@@ -420,10 +434,11 @@ docker run -d \
 - **超时控制**: HTTP 回调强制 3 秒超时，避免资源占用
 - **管理后台认证**: API Key + IP 白名单双重保护
 - **密钥轮换**: 提供密钥轮换工具，建议每 90 天轮换
+- **API 限流**: 基于内存的 IP 限流，防止接口滥用
+- **日志脱敏**: 自动对手机号、身份证、银行卡等敏感信息脱敏
+- **证书监控**: 自动检查证书有效期，提前 30 天告警
+- **请求追踪**: W3C Trace Context 兼容，支持分布式追踪
 - **依赖扫描**: CI/CD 集成 govulncheck 自动扫描漏洞
-- **安全迁移**: 使用 golang-migrate 进行版本化数据库迁移
-
-> 📖 详细安全配置请查看 [SECURITY_FIX_REPORT.md](SECURITY_FIX_REPORT.md) 和 [密钥轮换指南](docs/密钥轮换指南.md)
 
 ---
 
@@ -445,29 +460,28 @@ docker run -d \
 ### ✅ 已完成
 - [x] 微信支付（Native/JSAPI/H5/APP）
 - [x] 支付宝（扫码/Wap/APP/当面付）
-- [x] 多业务隔离
-- [x] 异步回调机制
-- [x] Docker 部署
-- [x] 核心模块单元测试
-- [x] 订单模型测试
-- [x] 配置管理测试
-- [x] T+1 自动对账系统
-- [x] 管理后台 API（订单管理、通知重试、对账报告）
-- [x] Handler 层集成测试
-
-### 🚧 进行中
-- [ ] 提升测试覆盖率（目标 80%+，当前 47.4%）
-- [ ] 支付渠道集成测试
-- [ ] 管理后台前端界面
+- [x] 多业务隔离（app_id 机制）
+- [x] 异步回调机制（3s 超时 + 5 次指数退避重试）
+- [x] 退款功能（全额/部分退款 + 退款查询 + 退款回调通知）
+- [x] T+1 自动对账系统（微信/支付宝账单下载、差异检测、报告生成）
+- [x] 管理后台（订单管理、通知重试、对账报告、操作日志、数据可视化）
+- [x] 配置管理（应用管理、渠道配置、审计日志）
+- [x] Prometheus 监控指标 + Grafana Dashboard
+- [x] 告警通知（Webhook/钉钉，支持支付失败、通知失败、对账异常、证书过期）
+- [x] API 限流（基于内存的 IP 限流，无 Redis 依赖）
+- [x] 请求追踪（W3C Trace Context 兼容，支持 OpenTelemetry/Jaeger）
+- [x] 日志脱敏（手机号、身份证、银行卡、API Key 等敏感信息自动脱敏）
+- [x] 证书有效期检查（提前 30 天告警）
+- [x] Docker Compose 一键部署
+- [x] Kubernetes Helm Chart
+- [x] 多语言客户端示例（Go/Node.js/Python/React）
 
 ### 📅 计划中
-- [ ] 退款功能
+- [ ] Stripe 支付（脚手架已就位）
 - [ ] 银联支付
-- [ ] Stripe 支付
-- [ ] Prometheus 监控
-- [ ] Grafana 监控面板
-- [ ] 告警通知（钉钉/飞书）
-- [ ] Kubernetes Helm Chart
+- [ ] 提升测试覆盖率至 80%+
+- [ ] 分布式追踪（Jaeger 完整集成）
+- [ ] Redis 缓存层（可选）
 
 ---
 

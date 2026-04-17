@@ -90,8 +90,8 @@ const (
 
 // 通知状态常量
 const (
-	NotifyStatusPending     = "pending"
-	NotifyStatusNotified    = "notified"
+	NotifyStatusPending      = "pending"
+	NotifyStatusNotified     = "notified"
 	NotifyStatusFailedNotify = "failed_notify"
 )
 
@@ -105,6 +105,7 @@ const (
 	ChannelAlipayWap    = "alipay_wap"    // 支付宝手机网站支付（H5）
 	ChannelAlipayApp    = "alipay_app"    // 支付宝 APP 支付
 	ChannelAlipayFace   = "alipay_face"   // 支付宝当面付（线下扫码）
+	ChannelStripe       = "stripe"        // Stripe 国际支付
 )
 
 // 交易类型常量

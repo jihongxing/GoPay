@@ -14,6 +14,8 @@ dist/
 *.out
 coverage.out
 coverage.html
+coverage_*.out
+chan
 
 # Dependency directories
 vendor/

@@ -13,6 +13,7 @@ type ReconciliationService struct {
 	wechatReconciler *WechatReconciler
 	alipayReconciler *AlipayReconciler
 	reportGenerator  *ReportGenerator
+	alertNotifier    AlertNotifier
 }
 
 // BillDownloader 账单下载器接口
@@ -241,25 +242,29 @@ func (s *ReconciliationService) ScheduleReconciliation(ctx context.Context) erro
 	}
 }
 
+// SetAlertNotifier 设置告警通知器
+func (s *ReconciliationService) SetAlertNotifier(notifier AlertNotifier) {
+	s.alertNotifier = notifier
+}
+
 // sendAlert 发送告警
 func (s *ReconciliationService) sendAlert(result *ReconcileResult) {
-	// 实现告警逻辑（邮件、钉钉、飞书等）
-	// 可以集成 pkg/alert 包中的告警管理器
-	//
-	// 示例代码：
-	// import "gopay/pkg/alert"
-	//
-	// alertMsg := fmt.Sprintf(
-	//     "对账异常告警\n渠道: %s\n日期: %s\n长款: %d笔\n短款: %d笔\n金额不匹配: %d笔",
-	//     result.Channel,
-	//     result.Date.Format("2006-01-02"),
-	//     len(result.MissingOrders),
-	//     len(result.ExtraOrders),
-	//     len(result.AmountMismatch),
-	// )
-	//
-	// alertManager := alert.GetAlertManager()
-	// alertManager.SendDingTalk(context.Background(), alertMsg)
+	if s.alertNotifier == nil {
+		return
+	}
+
+	msg := fmt.Sprintf(
+		"⚠️ 对账异常告警\n渠道: %s\n日期: %s\n长款: %d笔\n短款: %d笔\n金额不匹配: %d笔",
+		result.Channel,
+		result.Date.Format("2006-01-02"),
+		len(result.MissingOrders),
+		len(result.ExtraOrders),
+		len(result.AmountMismatch),
+	)
+
+	if err := s.alertNotifier.SendAlert(context.Background(), msg); err != nil {
+		fmt.Printf("Failed to send reconciliation alert: %v\n", err)
+	}
 }
 
 var (

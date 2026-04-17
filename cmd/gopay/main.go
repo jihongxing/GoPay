@@ -1,12 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopay/internal/admin"
 	"gopay/internal/config"
 	"gopay/internal/database"
@@ -16,8 +15,27 @@ import (
 	"gopay/pkg/alert"
 	"gopay/pkg/logger"
 	"gopay/pkg/middleware"
+	"gopay/pkg/security"
 	"gopay/pkg/version"
+
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+// collectCertPaths 收集需要检查的证书文件路径
+func collectCertPaths() []string {
+	var paths []string
+	envKeys := []string{"WECHAT_CERT_PATH", "WECHAT_PLATFORM_CERT_PATH"}
+	for _, key := range envKeys {
+		if p := os.Getenv(key); p != "" {
+			if _, err := os.Stat(p); err == nil {
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths
+}
 
 func main() {
 	// 加载环境变量
@@ -67,9 +85,34 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
+	// 启动证书有效期检查（后台定期检查）
+	certPaths := collectCertPaths()
+	if len(certPaths) > 0 {
+		var alertFn func(context.Context, string) error
+		if cfg.AlertWebhookURL != "" {
+			am := alert.NewAlertManager(cfg.AlertWebhookURL)
+			alertFn = func(ctx context.Context, msg string) error {
+				return am.SendAlert(&alert.AlertMessage{
+					Level:   alert.AlertLevelWarning,
+					Title:   "证书过期告警",
+					Content: msg,
+				})
+			}
+		}
+		certChecker := security.NewCertChecker(certPaths, 30, alertFn)
+		go certChecker.StartPeriodicCheck(context.Background())
+		logger.Info("Certificate checker started for %d cert(s)", len(certPaths))
+	}
+
 	// 创建路由
 	router := gin.Default()
+	router.Use(middleware.RequestID())
+	router.Use(middleware.TraceContext())
 	router.Use(middleware.PrometheusMetrics())
+	router.Use(middleware.LocalRateLimit(middleware.LocalRateLimitConfig{
+		Rate:  100,
+		Burst: 200,
+	}))
 
 	// 健康检查
 	router.GET("/health", func(c *gin.Context) {
@@ -116,6 +159,7 @@ func main() {
 		// Webhook 回调
 		api.POST("/webhook/wechat", handler.WechatWebhook)
 		api.POST("/webhook/alipay", handler.AlipayWebhook)
+		api.POST("/webhook/stripe", handler.StripeWebhook)
 	}
 
 	// 内部管理接口（需要认证）

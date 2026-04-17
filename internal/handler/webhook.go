@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"gopay/internal/models"
 	"gopay/internal/service"
 	"gopay/pkg/channel"
 	"gopay/pkg/logger"
+
+	"github.com/gin-gonic/gin"
 )
 
 var (
@@ -150,6 +151,9 @@ func WechatWebhook(c *gin.Context) {
 			c.Data(http.StatusOK, "application/json", webhookResp.ResponseBody)
 			return
 		}
+
+		// 退款成功后，异步通知业务系统
+		notifyService.NotifyRefundAsync(order, webhookResp)
 	}
 
 	logger.Info("Webhook processed successfully: orderNo=%s", order.OrderNo)
@@ -287,6 +291,9 @@ func AlipayWebhook(c *gin.Context) {
 			c.Data(http.StatusOK, "text/plain", webhookResp.ResponseBody)
 			return
 		}
+
+		// 退款成功后，异步通知业务系统
+		notifyService.NotifyRefundAsync(order, webhookResp)
 	}
 
 	logger.Info("Webhook processed successfully: orderNo=%s", order.OrderNo)

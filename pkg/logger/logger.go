@@ -48,7 +48,8 @@ func Info(format string, v ...interface{}) {
 	if infoLogger == nil {
 		Init("info", "")
 	}
-	infoLogger.Printf(format, v...)
+	msg := fmt.Sprintf(format, v...)
+	infoLogger.Print(Sanitize(msg))
 }
 
 // Error 输出错误日志
@@ -56,7 +57,8 @@ func Error(format string, v ...interface{}) {
 	if errorLogger == nil {
 		Init("info", "")
 	}
-	errorLogger.Printf(format, v...)
+	msg := fmt.Sprintf(format, v...)
+	errorLogger.Print(Sanitize(msg))
 }
 
 // Debug 输出调试日志
@@ -65,7 +67,8 @@ func Debug(format string, v ...interface{}) {
 		if debugLogger == nil {
 			Init("debug", "")
 		}
-		debugLogger.Printf(format, v...)
+		msg := fmt.Sprintf(format, v...)
+		debugLogger.Print(Sanitize(msg))
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gopay/internal/models"
+	"gopay/pkg/channel"
 	"gopay/pkg/errors"
 	"gopay/pkg/logger"
 )
@@ -57,6 +58,19 @@ type NotifyRequest struct {
 	ChannelOrderNo string `json:"channel_order_no"`
 }
 
+// RefundNotifyRequest 退款通知请求
+type RefundNotifyRequest struct {
+	OrderNo          string `json:"order_no"`
+	OutTradeNo       string `json:"out_trade_no"`
+	RefundNo         string `json:"refund_no,omitempty"`
+	PlatformRefundNo string `json:"platform_refund_no,omitempty"`
+	Amount           int64  `json:"amount"`
+	RefundAmount     int64  `json:"refund_amount"`
+	Status           string `json:"status"`
+	Channel          string `json:"channel"`
+	RefundedAt       string `json:"refunded_at,omitempty"`
+}
+
 // NotifyAsync 异步通知业务系统（在事务外调用）
 func (s *NotifyService) NotifyAsync(order *models.Order) {
 	// 获取 worker 令牌（限制并发）
@@ -84,21 +98,72 @@ func (s *NotifyService) NotifyAsync(order *models.Order) {
 	}
 }
 
+// NotifyRefundAsync 退款成功后异步通知业务系统
+func (s *NotifyService) NotifyRefundAsync(order *models.Order, webhookResp *channel.WebhookResponse) {
+	select {
+	case s.workerPool <- struct{}{}:
+		go func() {
+			defer func() { <-s.workerPool }()
+
+			ctx := context.Background()
+
+			app, err := s.getApp(order.AppID)
+			if err != nil {
+				logger.Error("Failed to get app for refund notify: orderNo=%s, error=%v", order.OrderNo, err)
+				return
+			}
+
+			refundedAt := ""
+			if !webhookResp.PaidAt.IsZero() {
+				refundedAt = webhookResp.PaidAt.Format(time.RFC3339)
+			}
+
+			payload := &RefundNotifyRequest{
+				OrderNo:          order.OrderNo,
+				OutTradeNo:       order.OutTradeNo,
+				RefundNo:         webhookResp.RefundNo,
+				PlatformRefundNo: webhookResp.PlatformRefundNo,
+				Amount:           order.Amount,
+				RefundAmount:     webhookResp.PaidAmount,
+				Status:           "refunded",
+				Channel:          order.Channel,
+				RefundedAt:       refundedAt,
+			}
+
+			s.notifyWithRetryPayload(ctx, order, app.CallbackURL, payload)
+		}()
+	default:
+		logger.Error("Worker pool is full, cannot notify refund: %s", order.OrderNo)
+	}
+}
+
 // notifyWithRetry 带重试的通知（铁律二：最多5次重试，指数退避）
 func (s *NotifyService) notifyWithRetry(ctx context.Context, order *models.Order, callbackURL string) {
+	s.notifyWithRetryPayload(ctx, order, callbackURL, s.buildNotifyRequest(order))
+}
+
+// notifyWithRetryPayload 带重试的通知（通用版本，支持自定义 payload）
+func (s *NotifyService) notifyWithRetryPayload(ctx context.Context, order *models.Order, callbackURL string, payload interface{}) {
 	maxRetries := 5
+
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		logger.Error("Failed to marshal notify payload: orderNo=%s, error=%v", order.OrderNo, err)
+		return
+	}
+	bodyStr := string(bodyBytes)
 
 	for i := 0; i < maxRetries; i++ {
 		logger.Info("Notifying business system: orderNo=%s, attempt=%d/%d", order.OrderNo, i+1, maxRetries)
 
 		// 执行通知
-		success, statusCode, respBody, duration, err := s.doNotify(ctx, order, callbackURL)
+		success, statusCode, respBody, duration, err := s.doNotifyPayload(ctx, callbackURL, bodyBytes)
 
 		// 记录通知日志
 		s.saveNotifyLog(&models.NotifyLog{
 			OrderNo:        order.OrderNo,
 			CallbackURL:    callbackURL,
-			RequestBody:    s.buildNotifyRequestBody(order),
+			RequestBody:    bodyStr,
 			ResponseStatus: statusCode,
 			ResponseBody:   respBody,
 			Success:        success,
@@ -129,7 +194,7 @@ func (s *NotifyService) notifyWithRetry(ctx context.Context, order *models.Order
 	s.orderService.UpdateNotifyStatus(ctx, order.OrderNo, models.NotifyStatusFailedNotify)
 	logger.Error("All notify attempts failed: orderNo=%s", order.OrderNo)
 
-	// TODO: 发送告警通知运维人员
+	// 发送告警通知运维人员
 	s.alertOps(order)
 }
 
@@ -171,6 +236,37 @@ func (s *NotifyService) doNotify(ctx context.Context, order *models.Order, callb
 	statusCode = resp.StatusCode
 
 	// 判断是否成功（HTTP 200 表示成功）
+	success = (statusCode == 200)
+
+	return success, statusCode, respBody, duration, nil
+}
+
+// doNotifyPayload 执行单次通知（使用预序列化的 payload）
+func (s *NotifyService) doNotifyPayload(ctx context.Context, callbackURL string, bodyBytes []byte) (success bool, statusCode int, respBody string, duration time.Duration, err error) {
+	startTime := time.Now()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", callbackURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return false, 0, "", time.Since(startTime), fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "GoPay/1.0")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return false, 0, "", time.Since(startTime), fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, resp.StatusCode, "", time.Since(startTime), fmt.Errorf("failed to read response: %w", err)
+	}
+
+	duration = time.Since(startTime)
+	respBody = string(respBodyBytes)
+	statusCode = resp.StatusCode
 	success = (statusCode == 200)
 
 	return success, statusCode, respBody, duration, nil

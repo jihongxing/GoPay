@@ -9,6 +9,7 @@ import (
 	"gopay/internal/models"
 	"gopay/pkg/channel"
 	"gopay/pkg/channel/alipay"
+	"gopay/pkg/channel/stripe"
 	"gopay/pkg/channel/wechat"
 	"gopay/pkg/errors"
 	"gopay/pkg/logger"
@@ -180,6 +181,8 @@ func (m *ChannelManager) createProvider(channelName, configJSON string) (channel
 		return m.createAlipayAppProvider(configJSON)
 	case models.ChannelAlipayFace:
 		return m.createAlipayFaceProvider(configJSON)
+	case models.ChannelStripe:
+		return m.createStripeProvider(configJSON)
 	default:
 		return nil, errors.NewInvalidChannelError(channelName)
 	}
@@ -300,6 +303,21 @@ func (m *ChannelManager) createAlipayFaceProvider(configJSON string) (channel.Pa
 	provider, err := alipay.NewFaceProvider(&cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alipay Face provider: %w", err)
+	}
+
+	return provider, nil
+}
+
+// createStripeProvider 创建 Stripe 支付 Provider
+func (m *ChannelManager) createStripeProvider(configJSON string) (channel.PaymentChannel, error) {
+	var cfg stripe.Config
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal stripe config: %w", err)
+	}
+
+	provider, err := stripe.NewProvider(&cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stripe provider: %w", err)
 	}
 
 	return provider, nil

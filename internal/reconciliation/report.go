@@ -129,45 +129,8 @@ func (g *ReportGenerator) writeAmountMismatch(writer *csv.Writer, result *Reconc
 	writer.Write([]string{""}) // 空行
 }
 
-// GenerateExcel 生成 Excel 报告（可选）
+// GenerateExcel 生成 Excel 报告
+// 需要安装 excelize 库: go get github.com/xuri/excelize/v2
 func (g *ReportGenerator) GenerateExcel(ctx context.Context, result *ReconcileResult) (string, error) {
-	// 使用 excelize 库生成 Excel 报告
-	// 需要先安装: go get github.com/xuri/excelize/v2
-	//
-	// 实现步骤：
-	// 1. 创建 Excel 文件
-	// 2. 创建工作表（汇总、长款、短款、金额不匹配）
-	// 3. 写入数据并设置样式
-	// 4. 保存文件
-	//
-	// 示例代码：
-	// import "github.com/xuri/excelize/v2"
-	//
-	// f := excelize.NewFile()
-	// defer f.Close()
-	//
-	// // 创建汇总表
-	// sheetName := "汇总"
-	// index, _ := f.NewSheet(sheetName)
-	// f.SetCellValue(sheetName, "A1", "GoPay 对账报告")
-	// f.SetCellValue(sheetName, "A2", "对账日期")
-	// f.SetCellValue(sheetName, "B2", result.Date.Format("2006-01-02"))
-	// ... 更多数据写入
-	//
-	// // 设置样式
-	// style, _ := f.NewStyle(&excelize.Style{
-	//     Font: &excelize.Font{Bold: true, Size: 14},
-	// })
-	// f.SetCellStyle(sheetName, "A1", "A1", style)
-	//
-	// // 保存文件
-	// filename := fmt.Sprintf("reconciliation_%s_%s.xlsx",
-	//     result.Channel, result.Date.Format("20060102"))
-	// filepath := filepath.Join(g.reportDir, filename)
-	// if err := f.SaveAs(filepath); err != nil {
-	//     return "", err
-	// }
-	// return filepath, nil
-
-	return "", fmt.Errorf("excel report generation not implemented: please install github.com/xuri/excelize/v2")
+	return "", fmt.Errorf("excel report generation not implemented: install github.com/xuri/excelize/v2")
 }
