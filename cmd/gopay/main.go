@@ -151,12 +151,18 @@ func main() {
 
 	// API 路由组
 	api := router.Group("/api/v1")
-	{
-		// 支付相关
-		api.POST("/checkout", handler.Checkout)
-		api.GET("/orders/:order_no", handler.QueryOrder)
 
-		// Webhook 回调
+	// 签名验证中间件（保护业务接口）
+	nonceChecker := middleware.NewInMemoryNonceChecker()
+	signedAPI := api.Group("", middleware.SignatureAuth(db, nonceChecker))
+	{
+		// 支付相关（需要签名验证）
+		signedAPI.POST("/checkout", handler.Checkout)
+		signedAPI.GET("/orders/:order_no", handler.QueryOrder)
+	}
+
+	// Webhook 回调（不需要签名验证，由各支付平台自身的签名机制保护）
+	{
 		api.POST("/webhook/wechat", handler.WechatWebhook)
 		api.POST("/webhook/alipay", handler.AlipayWebhook)
 		api.POST("/webhook/stripe", handler.StripeWebhook)

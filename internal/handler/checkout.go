@@ -1,10 +1,11 @@
 package handler
 
 import (
-	"github.com/gin-gonic/gin"
 	"gopay/internal/service"
 	"gopay/pkg/logger"
 	"gopay/pkg/response"
+
+	"github.com/gin-gonic/gin"
 )
 
 var (
@@ -65,6 +66,14 @@ func Checkout(c *gin.Context) {
 		Channel:    req.Channel,
 		NotifyURL:  req.NotifyURL,
 		ExtraData:  req.ExtraData,
+	}
+
+	// 如果经过签名验证，确保请求体中的 app_id 与签名中的一致
+	if verifiedAppID, exists := c.Get("verified_app_id"); exists {
+		if req.AppID != verifiedAppID.(string) {
+			response.BadRequest(c, "app_id 与签名不匹配")
+			return
+		}
 	}
 
 	// 调用服务层创建订单
