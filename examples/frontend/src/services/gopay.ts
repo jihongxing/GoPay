@@ -33,12 +33,22 @@ export interface Order {
   updated_at: string;
 }
 
+/**
+ * GoPay 前端服务
+ *
+ * 注意：前端不应直接持有 app_secret。
+ * 推荐架构：前端 → 你的后端 → GoPay（签名在你的后端完成）
+ *
+ * 如果你的场景允许前端直签（如内网管理工具），可以传入 appSecret。
+ */
 export class GopayService {
   private client: AxiosInstance;
   private appId: string;
+  private appSecret: string;
 
-  constructor(baseURL: string, appId: string) {
+  constructor(baseURL: string, appId: string, appSecret: string = '') {
     this.appId = appId;
+    this.appSecret = appSecret;
     this.client = axios.create({
       baseURL,
       timeout: 30000,
@@ -48,24 +58,55 @@ export class GopayService {
     });
   }
 
-  async createOrder(req: CreateOrderRequest): Promise<CreateOrderResponse> {
-    const response = await this.client.post('/api/v1/checkout', {
-      ...req,
-      app_id: this.appId,
-    });
+  /**
+   * 生成 HMAC-SHA256 签名（需要浏览器支持 SubtleCrypto）
+   */
+  private async sign(body: string): Promise<Record<string, string>> {
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const nonce = crypto.randomUUID();
+    const message = body + '\n' + timestamp + '\n' + nonce;
 
-    if (response.data.code !== 0) {
-      throw new Error(response.data.message || 'Create order failed');
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(this.appSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+    const signature = Array.from(new Uint8Array(sig))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    return {
+      'X-App-ID': this.appId,
+      'X-Timestamp': timestamp,
+      'X-Nonce': nonce,
+      'X-Signature': signature,
+    };
+  }
+
+  async createOrder(req: CreateOrderRequest): Promise<CreateOrderResponse> {
+    const body = JSON.stringify({ ...req, app_id: this.appId });
+    const headers = this.appSecret ? await this.sign(body) : {};
+
+    const response = await this.client.post('/api/v1/checkout', body, { headers });
+
+    if (response.data.code !== 'SUCCESS') {
+      throw new Error(`[${response.data.code}] ${response.data.message}`);
     }
 
     return response.data.data;
   }
 
   async queryOrder(orderNo: string): Promise<Order> {
-    const response = await this.client.get(`/api/v1/orders/${orderNo}`);
+    const headers = this.appSecret ? await this.sign('') : {};
 
-    if (response.data.code !== 0) {
-      throw new Error(response.data.message || 'Query order failed');
+    const response = await this.client.get(`/api/v1/orders/${orderNo}`, { headers });
+
+    if (response.data.code !== 'SUCCESS') {
+      throw new Error(`[${response.data.code}] ${response.data.message}`);
     }
 
     return response.data.data;

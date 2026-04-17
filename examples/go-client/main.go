@@ -30,11 +30,15 @@ func main() {
 	// 创建客户端
 	gopayURL := getEnv("GOPAY_URL", "http://localhost:8080")
 	appID := getEnv("APP_ID", "")
+	appSecret := getEnv("APP_SECRET", "")
 	if appID == "" {
 		log.Fatal("APP_ID is required")
 	}
+	if appSecret == "" {
+		log.Fatal("APP_SECRET is required")
+	}
 
-	c := client.NewClient(gopayURL, appID)
+	c := client.NewClient(gopayURL, appID, appSecret)
 
 	// 执行命令
 	command := args[0]
@@ -184,6 +188,7 @@ func printUsage() {
 	fmt.Println("环境变量:")
 	fmt.Println("  GOPAY_URL      GoPay 服务地址 (默认: http://localhost:8080)")
 	fmt.Println("  APP_ID         应用ID (必填)")
+	fmt.Println("  APP_SECRET     应用密钥 (必填)")
 	fmt.Println("  CHANNEL        支付渠道 (默认: wechat_native)")
 	fmt.Println("  NOTIFY_URL     回调地址 (默认: http://localhost:8081/callback)")
 	fmt.Println("  CALLBACK_PORT  回调服务器端口 (默认: 8081)")

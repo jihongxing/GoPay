@@ -21,11 +21,16 @@ def main():
     # 创建客户端
     client = GopayClient(
         base_url=os.getenv('GOPAY_URL', 'http://localhost:8080'),
-        app_id=os.getenv('APP_ID', '')
+        app_id=os.getenv('APP_ID', ''),
+        app_secret=os.getenv('APP_SECRET', '')
     )
 
     if not client.app_id:
         print('错误: APP_ID 未配置')
+        return
+
+    if not client.app_secret:
+        print('错误: APP_SECRET 未配置')
         return
 
     # 查询订单

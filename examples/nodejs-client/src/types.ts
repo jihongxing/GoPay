@@ -1,6 +1,7 @@
 export interface GopayClientConfig {
   baseURL: string;
   appId: string;
+  appSecret: string;
   timeout?: number;
 }
 
@@ -41,14 +42,17 @@ export interface CallbackData {
   order_no: string;
   out_trade_no: string;
   amount: number;
-  currency: string;
-  channel: string;
   status: string;
+  channel: string;
   paid_at?: string;
+  // 退款通知额外字段
+  refund_no?: string;
+  refund_amount?: number;
+  refunded_at?: string;
 }
 
 export interface ApiResponse<T> {
-  code: number;
+  code: string;
   message: string;
   data: T;
 }
