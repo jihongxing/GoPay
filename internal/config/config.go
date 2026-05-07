@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config 应用配置
@@ -59,6 +60,9 @@ func Load() (*Config, error) {
 		}
 		if !hasEnv("PUBLIC_BASE_URL") {
 			return nil, fmt.Errorf("PUBLIC_BASE_URL must be explicitly set in production")
+		}
+		if strings.TrimSpace(getEnv("MASTER_KEY", "")) == "" {
+			return nil, fmt.Errorf("MASTER_KEY must be explicitly set in production")
 		}
 	}
 

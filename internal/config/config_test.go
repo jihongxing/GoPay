@@ -12,6 +12,7 @@ func TestLoad(t *testing.T) {
 	os.Setenv("PUBLIC_BASE_URL", "http://localhost:8080")
 	os.Setenv("ADMIN_API_KEY", "test_admin_key")
 	os.Setenv("ADMIN_IP_WHITELIST", "127.0.0.1,::1")
+	os.Setenv("MASTER_KEY", "test_master_key")
 	os.Setenv("DB_PASSWORD", "test_password")
 	os.Setenv("DB_USER", "test_user")
 	os.Setenv("DB_NAME", "test_db")
@@ -20,6 +21,7 @@ func TestLoad(t *testing.T) {
 		os.Unsetenv("PUBLIC_BASE_URL")
 		os.Unsetenv("ADMIN_API_KEY")
 		os.Unsetenv("ADMIN_IP_WHITELIST")
+		os.Unsetenv("MASTER_KEY")
 		os.Unsetenv("DB_PASSWORD")
 		os.Unsetenv("DB_USER")
 		os.Unsetenv("DB_NAME")
@@ -47,6 +49,30 @@ func TestLoad(t *testing.T) {
 	}
 	if cfg.AdminIPWhitelist != "127.0.0.1,::1" {
 		t.Errorf("AdminIPWhitelist = %v, want 127.0.0.1,::1", cfg.AdminIPWhitelist)
+	}
+}
+
+// TestLoad_ProductionMissingMasterKey 测试生产环境缺少 MASTER_KEY
+func TestLoad_ProductionMissingMasterKey(t *testing.T) {
+	os.Setenv("SERVER_ENV", "production")
+	os.Setenv("PUBLIC_BASE_URL", "https://pay.example.com")
+	os.Setenv("ADMIN_API_KEY", "test_admin_key")
+	os.Setenv("DB_PASSWORD", "test_password")
+	os.Setenv("DB_USER", "test_user")
+	os.Setenv("DB_NAME", "test_db")
+	os.Unsetenv("MASTER_KEY")
+	defer func() {
+		os.Unsetenv("SERVER_ENV")
+		os.Unsetenv("PUBLIC_BASE_URL")
+		os.Unsetenv("ADMIN_API_KEY")
+		os.Unsetenv("DB_PASSWORD")
+		os.Unsetenv("DB_USER")
+		os.Unsetenv("DB_NAME")
+	}()
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should return error when MASTER_KEY is missing in production")
 	}
 }
 

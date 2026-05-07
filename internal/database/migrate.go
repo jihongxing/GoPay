@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -11,6 +12,7 @@ import (
 )
 
 const defaultMigrationsPath = "file://migrations"
+const migrationLockKey int64 = 20260507
 
 func normalizeMigrationsPath(path string) string {
 	path = strings.TrimSpace(path)
@@ -49,33 +51,56 @@ func closeMigrator(m *migrate.Migrate) error {
 	return databaseErr
 }
 
+func withMigrationLock(db *sql.DB, fn func() error) error {
+	ctx := context.Background()
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire migration connection: %w", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey); err != nil {
+		return fmt.Errorf("failed to acquire migration lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey)
+	}()
+
+	return fn()
+}
+
 // RunMigrations 执行数据库迁移
 func RunMigrations(db *sql.DB, migrationsPath string) error {
-	m, err := newMigrator(db, migrationsPath)
-	if err != nil {
-		return err
-	}
-	defer closeMigrator(m)
+	return withMigrationLock(db, func() error {
+		m, err := newMigrator(db, migrationsPath)
+		if err != nil {
+			return err
+		}
+		defer closeMigrator(m)
 
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
+		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+			return fmt.Errorf("failed to run migrations: %w", err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // RollbackLastMigration 回滚最近一次迁移
 func RollbackLastMigration(db *sql.DB, migrationsPath string) error {
-	m, err := newMigrator(db, migrationsPath)
-	if err != nil {
-		return err
-	}
-	defer closeMigrator(m)
+	return withMigrationLock(db, func() error {
+		m, err := newMigrator(db, migrationsPath)
+		if err != nil {
+			return err
+		}
+		defer closeMigrator(m)
 
-	if err := m.Steps(-1); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to rollback migration: %w", err)
-	}
-	return nil
+		if err := m.Steps(-1); err != nil && err != migrate.ErrNoChange {
+			return fmt.Errorf("failed to rollback migration: %w", err)
+		}
+		return nil
+	})
 }
 
 // MigrationVersion 获取当前迁移版本
@@ -98,14 +123,16 @@ func MigrationVersion(db *sql.DB, migrationsPath string) (uint, bool, error) {
 
 // ForceMigrationVersion 强制设置迁移版本
 func ForceMigrationVersion(db *sql.DB, migrationsPath string, version int) error {
-	m, err := newMigrator(db, migrationsPath)
-	if err != nil {
-		return err
-	}
-	defer closeMigrator(m)
+	return withMigrationLock(db, func() error {
+		m, err := newMigrator(db, migrationsPath)
+		if err != nil {
+			return err
+		}
+		defer closeMigrator(m)
 
-	if err := m.Force(version); err != nil {
-		return fmt.Errorf("failed to force migration version: %w", err)
-	}
-	return nil
+		if err := m.Force(version); err != nil {
+			return fmt.Errorf("failed to force migration version: %w", err)
+		}
+		return nil
+	})
 }

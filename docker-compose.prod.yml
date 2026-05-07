@@ -54,7 +54,8 @@ services:
       DB_NAME: ${DB_NAME}
       DB_SSLMODE: require
       MASTER_KEY: ${MASTER_KEY:-}
-      RUN_MIGRATIONS: "true"
+      # 生产环境请先执行一次性迁移，再启动服务实例
+      RUN_MIGRATIONS: "false"
     depends_on:
       postgres:
         condition: service_healthy

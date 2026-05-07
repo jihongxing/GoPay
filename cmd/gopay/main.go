@@ -60,11 +60,7 @@ func main() {
 	}
 	defer database.Close()
 
-	// 运行数据库迁移
 	db := database.GetDB()
-	if err := database.RunMigrations(db, os.Getenv("MIGRATIONS_PATH")); err != nil {
-		logger.Fatal("Failed to run migrations: %v", err)
-	}
 
 	// 初始化服务层
 	channelManager := service.NewChannelManager(db)

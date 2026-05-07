@@ -13,7 +13,7 @@ until PGPASSWORD=$DB_PASSWORD psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c 
   sleep 2
 done
 
-echo "Database is up - running migrations"
+echo "Database is up - checking migration mode"
 
 # 运行迁移（使用安全的 golang-migrate 工具）
 if [ "$RUN_MIGRATIONS" = "true" ]; then
