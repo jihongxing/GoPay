@@ -26,23 +26,23 @@ func TestListFailedOrders_Success(t *testing.T) {
 
 	now := time.Now()
 
-	// 期望查询待通知订单
+	// 期望查询通知失败订单
 	rows := sqlmock.NewRows([]string{
 		"id", "order_no", "app_id", "out_trade_no", "channel", "amount",
 		"currency", "subject", "body", "status", "notify_status", "retry_count",
 		"channel_order_no", "pay_url", "paid_at", "notified_at", "expires_at", "created_at", "updated_at",
 	}).AddRow(
 		1, "ORD_001", "test_app", "OUT_001", "wechat_native", 10000,
-		"CNY", "测试商品", "测试描述", models.OrderStatusPaid, models.NotifyStatusPending, 2,
+		"CNY", "测试商品", "测试描述", models.OrderStatusPaid, models.NotifyStatusFailedNotify, 2,
 		"WX_001", "", &now, nil, now.Add(2*time.Hour), now, now,
 	).AddRow(
 		2, "ORD_002", "test_app", "OUT_002", "alipay_qr", 20000,
-		"CNY", "测试商品2", "测试描述2", models.OrderStatusPaid, models.NotifyStatusPending, 1,
+		"CNY", "测试商品2", "测试描述2", models.OrderStatusPaid, models.NotifyStatusFailedNotify, 1,
 		"ALI_001", "", &now, nil, now.Add(2*time.Hour), now, now,
 	)
 
-	mock.ExpectQuery("SELECT (.+) FROM orders WHERE status = \\$1 AND notify_status = \\$2 AND retry_count < 5").
-		WithArgs(models.OrderStatusPaid, models.NotifyStatusPending, 100).
+	mock.ExpectQuery("SELECT (.+) FROM orders WHERE notify_status = \\$1").
+		WithArgs(models.NotifyStatusFailedNotify, 100).
 		WillReturnRows(rows)
 
 	// 执行请求
@@ -82,8 +82,8 @@ func TestListFailedOrders_Empty(t *testing.T) {
 		"channel_order_no", "pay_url", "paid_at", "notified_at", "expires_at", "created_at", "updated_at",
 	})
 
-	mock.ExpectQuery("SELECT (.+) FROM orders WHERE status = \\$1 AND notify_status = \\$2 AND retry_count < 5").
-		WithArgs(models.OrderStatusPaid, models.NotifyStatusPending, 100).
+	mock.ExpectQuery("SELECT (.+) FROM orders WHERE notify_status = \\$1").
+		WithArgs(models.NotifyStatusFailedNotify, 100).
 		WillReturnRows(rows)
 
 	// 执行请求
@@ -114,8 +114,8 @@ func TestListFailedOrders_DatabaseError(t *testing.T) {
 	router := setupTestRouter(db)
 
 	// 期望查询返回错误
-	mock.ExpectQuery("SELECT (.+) FROM orders WHERE status = \\$1 AND notify_status = \\$2 AND retry_count < 5").
-		WithArgs(models.OrderStatusPaid, models.NotifyStatusPending, 100).
+	mock.ExpectQuery("SELECT (.+) FROM orders WHERE notify_status = \\$1").
+		WithArgs(models.NotifyStatusFailedNotify, 100).
 		WillReturnError(sql.ErrConnDone)
 
 	// 执行请求

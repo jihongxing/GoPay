@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 CREATE UNIQUE INDEX idx_orders_order_no ON orders(order_no);
+CREATE UNIQUE INDEX idx_orders_app_out_trade_no ON orders(app_id, out_trade_no);
 CREATE INDEX idx_orders_app_id ON orders(app_id);
 CREATE INDEX idx_orders_out_trade_no ON orders(out_trade_no);
 CREATE INDEX idx_orders_status ON orders(status);

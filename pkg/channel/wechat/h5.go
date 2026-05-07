@@ -46,7 +46,7 @@ func (p *H5Provider) CreateOrder(ctx context.Context, req *channel.CreateOrderRe
 	logger.Info("Creating wechat H5 order: orderID=%s, amount=%d", req.OrderID, req.Amount)
 
 	// 验证必需参数
-	appID := req.ExtraData["app_id"]
+	appID := firstNonEmpty(req.ExtraData["app_id"], p.appID)
 	if appID == "" {
 		return nil, fmt.Errorf("app_id is required for H5 payment")
 	}

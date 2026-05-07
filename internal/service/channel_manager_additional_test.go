@@ -117,7 +117,7 @@ func TestChannelManager_GetProvider_InvalidJSON(t *testing.T) {
 	provider, err := manager.GetProvider("app-1", "alipay_qr")
 	assert.Error(t, err)
 	assert.Nil(t, provider)
-	assert.Contains(t, err.Error(), "failed to unmarshal alipay config")
+	assert.Contains(t, err.Error(), "failed to decrypt alipay config")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"gopay/internal/admin"
 	"gopay/internal/config"
@@ -61,7 +62,7 @@ func main() {
 
 	// 运行数据库迁移
 	db := database.GetDB()
-	if err := database.RunMigrations(db, "migrations"); err != nil {
+	if err := database.RunMigrations(db, os.Getenv("MIGRATIONS_PATH")); err != nil {
 		logger.Fatal("Failed to run migrations: %v", err)
 	}
 
@@ -73,6 +74,7 @@ func main() {
 	if cfg.AlertWebhookURL != "" {
 		notifyService.SetAlertManager(alert.NewAlertManager(cfg.AlertWebhookURL))
 	}
+	notifyService.StartRetryScheduler(context.Background(), time.Minute)
 	refundService := service.NewRefundService(db, orderService, channelManager)
 
 	// 初始化 Handler

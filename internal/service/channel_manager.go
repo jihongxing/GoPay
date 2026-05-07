@@ -190,6 +190,11 @@ func (m *ChannelManager) createProvider(channelName, configJSON string) (channel
 
 // createWechatNativeProvider 创建微信 Native 支付 Provider
 func (m *ChannelManager) createWechatNativeProvider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt wechat config: %w", err)
+	}
+
 	var cfg wechat.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal wechat config: %w", err)
@@ -205,6 +210,11 @@ func (m *ChannelManager) createWechatNativeProvider(configJSON string) (channel.
 
 // createWechatJSAPIProvider 创建微信 JSAPI 支付 Provider
 func (m *ChannelManager) createWechatJSAPIProvider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt wechat config: %w", err)
+	}
+
 	var cfg wechat.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal wechat config: %w", err)
@@ -220,6 +230,11 @@ func (m *ChannelManager) createWechatJSAPIProvider(configJSON string) (channel.P
 
 // createWechatH5Provider 创建微信 H5 支付 Provider
 func (m *ChannelManager) createWechatH5Provider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt wechat config: %w", err)
+	}
+
 	var cfg wechat.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal wechat config: %w", err)
@@ -235,6 +250,11 @@ func (m *ChannelManager) createWechatH5Provider(configJSON string) (channel.Paym
 
 // createWechatAppProvider 创建微信 APP 支付 Provider
 func (m *ChannelManager) createWechatAppProvider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt wechat config: %w", err)
+	}
+
 	var cfg wechat.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal wechat config: %w", err)
@@ -250,6 +270,11 @@ func (m *ChannelManager) createWechatAppProvider(configJSON string) (channel.Pay
 
 // createAlipayQRProvider 创建支付宝扫码支付 Provider
 func (m *ChannelManager) createAlipayQRProvider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt alipay config: %w", err)
+	}
+
 	var cfg alipay.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal alipay config: %w", err)
@@ -265,6 +290,11 @@ func (m *ChannelManager) createAlipayQRProvider(configJSON string) (channel.Paym
 
 // createAlipayWapProvider 创建支付宝手机网站支付 Provider
 func (m *ChannelManager) createAlipayWapProvider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt alipay config: %w", err)
+	}
+
 	var cfg alipay.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal alipay config: %w", err)
@@ -280,6 +310,11 @@ func (m *ChannelManager) createAlipayWapProvider(configJSON string) (channel.Pay
 
 // createAlipayAppProvider 创建支付宝 APP 支付 Provider
 func (m *ChannelManager) createAlipayAppProvider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt alipay config: %w", err)
+	}
+
 	var cfg alipay.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal alipay config: %w", err)
@@ -295,6 +330,11 @@ func (m *ChannelManager) createAlipayAppProvider(configJSON string) (channel.Pay
 
 // createAlipayFaceProvider 创建支付宝当面付 Provider
 func (m *ChannelManager) createAlipayFaceProvider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt alipay config: %w", err)
+	}
+
 	var cfg alipay.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal alipay config: %w", err)
@@ -310,6 +350,11 @@ func (m *ChannelManager) createAlipayFaceProvider(configJSON string) (channel.Pa
 
 // createStripeProvider 创建 Stripe 支付 Provider
 func (m *ChannelManager) createStripeProvider(configJSON string) (channel.PaymentChannel, error) {
+	configJSON, err := decryptConfigJSON(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt stripe config: %w", err)
+	}
+
 	var cfg stripe.Config
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal stripe config: %w", err)

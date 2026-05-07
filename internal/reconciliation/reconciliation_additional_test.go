@@ -29,6 +29,10 @@ func (f *fakeOrderRepo) GetOrdersByDate(ctx context.Context, date time.Time, cha
 	return f.orders, f.err
 }
 
+func (f *fakeOrderRepo) GetOrdersByDateAndApp(ctx context.Context, date time.Time, channel, appID string) ([]Order, error) {
+	return f.orders, f.err
+}
+
 type fakeAlertNotifier struct {
 	messages []string
 }

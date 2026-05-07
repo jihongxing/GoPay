@@ -13,6 +13,7 @@ require (
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/smartwalle/alipay/v3 v3.2.22
 	github.com/stretchr/testify v1.11.1
+	github.com/stripe/stripe-go/v85 v85.0.1
 	github.com/wechatpay-apiv3/wechatpay-go v0.2.21
 	golang.org/x/time v0.12.0
 )

@@ -1,6 +1,6 @@
 # 多阶段构建 Dockerfile
 # Stage 1: 构建阶段
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 # 设置工作目录
 WORKDIR /app
@@ -31,7 +31,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 FROM alpine:3.19
 
 # 安装运行时依赖（包括 postgresql-client 用于健康检查）
-RUN apk add --no-cache ca-certificates tzdata postgresql-client bash
+RUN apk add --no-cache ca-certificates tzdata postgresql-client bash wget
 
 # 创建非 root 用户
 RUN addgroup -g 1000 gopay && \
@@ -69,4 +69,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # 启动应用
-ENTRYPOINT ["/app/gopay"]
+CMD ["/app/gopay"]

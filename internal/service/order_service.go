@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	stderrors "errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"gopay/pkg/channel"
 	"gopay/pkg/errors"
 	"gopay/pkg/logger"
+
+	"github.com/lib/pq"
 )
 
 // ChannelManagerInterface 渠道管理器接口
@@ -67,6 +70,10 @@ type CreateOrderResponse struct {
 
 // CreateOrder 创建支付订单
 func (s *OrderService) CreateOrder(ctx context.Context, req *CreateOrderRequest) (*CreateOrderResponse, error) {
+	if req == nil {
+		return nil, errors.NewInvalidRequestError("请求参数不能为空", nil)
+	}
+
 	logger.Info("Creating order: appID=%s, outTradeNo=%s, amount=%d, channel=%s",
 		req.AppID, req.OutTradeNo, req.Amount, req.Channel)
 
@@ -140,6 +147,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *CreateOrderRequest)
 	}
 
 	if err := s.saveOrder(order); err != nil {
+		if isUniqueOrderViolation(err) {
+			return nil, errors.NewOrderExistsError(req.OutTradeNo)
+		}
 		return nil, fmt.Errorf("failed to save order: %w", err)
 	}
 
@@ -395,6 +405,19 @@ func (s *OrderService) saveOrder(order *models.Order) error {
 	)
 
 	return err
+}
+
+func isUniqueOrderViolation(err error) bool {
+	var pqErr *pq.Error
+	if !stderrors.As(err, &pqErr) {
+		return false
+	}
+	if pqErr.Code != "23505" {
+		return false
+	}
+	return pqErr.Constraint == "uk_orders_app_out_trade_no" ||
+		pqErr.Constraint == "idx_orders_app_out_trade_no" ||
+		(strings.Contains(pqErr.Message, "app_id") && strings.Contains(pqErr.Message, "out_trade_no"))
 }
 
 // QueryOrderByOutTradeNoGlobal 根据业务订单号全局查询订单（不需要 app_id）

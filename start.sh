@@ -4,23 +4,26 @@
 
 set -e
 
+COMPOSE_ENV_FILE="${COMPOSE_ENV_FILE:-.env}"
+COMPOSE_CMD="${COMPOSE_CMD:-podman compose --env-file ${COMPOSE_ENV_FILE}}"
+
 echo "=========================================="
 echo "  启动 GoPay 支付网关服务"
 echo "=========================================="
 echo ""
 
 # 检查环境变量文件
-if [ ! -f .env ]; then
-    echo "❌ 错误: .env 文件不存在"
+if [ ! -f "${COMPOSE_ENV_FILE}" ]; then
+    echo "❌ 错误: ${COMPOSE_ENV_FILE} 文件不存在"
     echo "请复制 .env.example 并配置环境变量"
     exit 1
 fi
 
 # 检查数据库是否启动
 echo "📦 检查数据库连接..."
-if ! docker ps | grep -q gopay-postgres; then
+if ! podman ps --format "{{.Names}}" | grep -q postgres; then
     echo "⚠️  数据库未启动，正在启动..."
-    docker-compose up -d
+    bash -lc "${COMPOSE_CMD} up -d postgres adminer"
     echo "⏳ 等待数据库启动..."
     sleep 5
 fi

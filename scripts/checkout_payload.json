@@ -1,0 +1,8 @@
+{
+  "app_id": "test_app",
+  "out_trade_no": "LOAD_TEST_001",
+  "amount": 100,
+  "subject": "压力测试商品",
+  "channel": "wechat_native",
+  "notify_url": "https://example.com/callback"
+}

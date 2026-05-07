@@ -13,19 +13,22 @@ NC='\033[0m'
 IMAGE_NAME="gopay"
 VERSION=${VERSION:-"latest"}
 REGISTRY=${REGISTRY:-""}
+COMPOSE_ENV_FILE=${COMPOSE_ENV_FILE:-".env"}
+CONTAINER_CLI=${CONTAINER_CLI:-"podman"}
+COMPOSE_CMD=${COMPOSE_CMD:-"${CONTAINER_CLI} compose --env-file ${COMPOSE_ENV_FILE}"}
 
 echo -e "${GREEN}=== GoPay Docker 部署脚本 ===${NC}"
 
 # 检查 .env 文件
-if [ ! -f .env ]; then
+if [ ! -f "${COMPOSE_ENV_FILE}" ]; then
     echo -e "${YELLOW}警告: .env 文件不存在，使用 .env.example${NC}"
-    cp .env.example .env
+    cp .env.example "${COMPOSE_ENV_FILE}"
 fi
 
 # 构建镜像
 build() {
-    echo -e "${GREEN}构建 Docker 镜像...${NC}"
-    docker build \
+    echo -e "${GREEN}构建容器镜像...${NC}"
+    ${CONTAINER_CLI} build \
         --build-arg VERSION=${VERSION} \
         -t ${IMAGE_NAME}:${VERSION} \
         -t ${IMAGE_NAME}:latest \
@@ -41,17 +44,17 @@ push() {
     fi
 
     echo -e "${GREEN}推送镜像到 ${REGISTRY}...${NC}"
-    docker tag ${IMAGE_NAME}:${VERSION} ${REGISTRY}/${IMAGE_NAME}:${VERSION}
-    docker tag ${IMAGE_NAME}:latest ${REGISTRY}/${IMAGE_NAME}:latest
-    docker push ${REGISTRY}/${IMAGE_NAME}:${VERSION}
-    docker push ${REGISTRY}/${IMAGE_NAME}:latest
+    ${CONTAINER_CLI} tag ${IMAGE_NAME}:${VERSION} ${REGISTRY}/${IMAGE_NAME}:${VERSION}
+    ${CONTAINER_CLI} tag ${IMAGE_NAME}:latest ${REGISTRY}/${IMAGE_NAME}:latest
+    ${CONTAINER_CLI} push ${REGISTRY}/${IMAGE_NAME}:${VERSION}
+    ${CONTAINER_CLI} push ${REGISTRY}/${IMAGE_NAME}:latest
     echo -e "${GREEN}✅ 镜像推送完成${NC}"
 }
 
 # 启动服务
 up() {
     echo -e "${GREEN}启动服务...${NC}"
-    docker-compose up -d
+    bash -lc "${COMPOSE_CMD} up -d"
     echo -e "${GREEN}✅ 服务启动完成${NC}"
     echo ""
     echo "服务地址:"
@@ -63,13 +66,13 @@ up() {
 # 停止服务
 down() {
     echo -e "${GREEN}停止服务...${NC}"
-    docker-compose down
+    bash -lc "${COMPOSE_CMD} down"
     echo -e "${GREEN}✅ 服务已停止${NC}"
 }
 
 # 查看日志
 logs() {
-    docker-compose logs -f gopay
+    bash -lc "${COMPOSE_CMD} logs -f gopay"
 }
 
 # 重启服务
@@ -80,9 +83,9 @@ restart() {
 
 # 清理
 clean() {
-    echo -e "${YELLOW}清理 Docker 资源...${NC}"
-    docker-compose down -v
-    docker rmi ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:latest || true
+    echo -e "${YELLOW}清理容器资源...${NC}"
+    bash -lc "${COMPOSE_CMD} down -v"
+    ${CONTAINER_CLI} rmi ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:latest || true
     echo -e "${GREEN}✅ 清理完成${NC}"
 }
 
@@ -91,7 +94,7 @@ health() {
     echo -e "${GREEN}检查服务健康状态...${NC}"
 
     # 检查 PostgreSQL
-    if docker-compose exec -T postgres pg_isready -U gopay > /dev/null 2>&1; then
+    if bash -lc "${COMPOSE_CMD} exec -T postgres pg_isready -U gopay" > /dev/null 2>&1; then
         echo -e "${GREEN}✅ PostgreSQL: 健康${NC}"
     else
         echo -e "${RED}❌ PostgreSQL: 不健康${NC}"
@@ -122,6 +125,8 @@ help() {
     echo "环境变量:"
     echo "  VERSION  - 镜像版本 (默认: latest)"
     echo "  REGISTRY - 镜像仓库地址"
+    echo "  COMPOSE_ENV_FILE - compose 使用的 env 文件 (默认: .env)"
+    echo "  CONTAINER_CLI - 容器命令 (默认: podman)"
 }
 
 # 主逻辑

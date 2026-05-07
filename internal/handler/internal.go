@@ -11,7 +11,7 @@ func ListFailedOrders(c *gin.Context) {
 	logger.Info("List failed orders request")
 
 	// 查询通知失败的订单
-	orders, err := orderService.ListPendingNotifyOrders(c.Request.Context(), 100)
+	orders, err := orderService.ListFailedOrders(c.Request.Context(), 100)
 	if err != nil {
 		logger.Error("Failed to list failed orders: %v", err)
 		response.InternalError(c, "查询失败订单失败", err.Error())

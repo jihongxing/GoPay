@@ -4,28 +4,35 @@
 
 set -e
 
+COMPOSE_ENV_FILE="${COMPOSE_ENV_FILE:-.env}"
+CONTAINER_CLI="${CONTAINER_CLI:-podman}"
+
+compose() {
+    "${CONTAINER_CLI}" compose --env-file "${COMPOSE_ENV_FILE}" "$@"
+}
+
 echo "=== GoPay 数据库测试 ==="
 echo ""
 
-# 1. 检查 Docker 是否运行
-echo "1. 检查 Docker 服务..."
-if ! docker info > /dev/null 2>&1; then
-    echo "❌ Docker 未运行，请先启动 Docker"
+# 1. 检查容器运行时是否可用
+echo "1. 检查容器服务..."
+if ! "${CONTAINER_CLI}" info > /dev/null 2>&1; then
+    echo "❌ ${CONTAINER_CLI} 未运行，请先启动 ${CONTAINER_CLI}"
     exit 1
 fi
-echo "✅ Docker 正常运行"
+echo "✅ ${CONTAINER_CLI} 正常运行"
 echo ""
 
 # 2. 启动 PostgreSQL
 echo "2. 启动 PostgreSQL..."
-docker-compose up -d postgres
+compose up -d postgres
 sleep 3
 echo "✅ PostgreSQL 已启动"
 echo ""
 
 # 3. 检查数据库连接
 echo "3. 检查数据库连接..."
-if docker-compose exec -T postgres pg_isready -U gopay > /dev/null 2>&1; then
+if compose exec -T postgres pg_isready -U gopay > /dev/null 2>&1; then
     echo "✅ 数据库连接正常"
 else
     echo "❌ 数据库连接失败"
@@ -45,7 +52,7 @@ echo ""
 
 # 5. 验证表结构
 echo "5. 验证表结构..."
-TABLES=$(docker-compose exec -T postgres psql -U gopay -d gopay -t -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;")
+TABLES=$(compose exec -T postgres psql -U gopay -d gopay -t -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;")
 
 echo "   已创建的表："
 echo "$TABLES" | while read -r table; do
@@ -57,7 +64,7 @@ echo ""
 
 # 6. 检查测试数据
 echo "6. 检查测试数据..."
-APP_COUNT=$(docker-compose exec -T postgres psql -U gopay -d gopay -t -c "SELECT COUNT(*) FROM apps;")
+APP_COUNT=$(compose exec -T postgres psql -U gopay -d gopay -t -c "SELECT COUNT(*) FROM apps;")
 echo "   apps 表记录数: $APP_COUNT"
 
 if [ "$APP_COUNT" -gt 0 ]; then
@@ -77,4 +84,4 @@ echo "  User: gopay"
 echo "  Password: gopay_dev_password"
 echo ""
 echo "连接命令："
-echo "  docker-compose exec postgres psql -U gopay -d gopay"
+echo "  ${CONTAINER_CLI} compose --env-file ${COMPOSE_ENV_FILE} exec postgres psql -U gopay -d gopay"

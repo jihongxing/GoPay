@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/smartwalle/alipay/v3"
@@ -26,13 +27,25 @@ type Config struct {
 	AppID           string `json:"app_id"`            // 应用 ID
 	PrivateKey      string `json:"private_key"`       // 应用私钥
 	AlipayPublicKey string `json:"alipay_public_key"` // 支付宝公钥
+	Gateway         string `json:"gateway"`           // 网关地址
 	IsProduction    bool   `json:"is_production"`     // 是否生产环境
 }
 
 // NewProvider 创建支付宝基础 Provider
 func NewProvider(cfg *Config) (*Provider, error) {
+	isProduction := cfg.IsProduction
+	var opts []alipay.OptionFunc
+	if cfg.Gateway != "" {
+		isProduction = strings.Contains(cfg.Gateway, "openapi.alipay.com")
+		if isProduction {
+			opts = append(opts, alipay.WithProductionGateway(cfg.Gateway))
+		} else {
+			opts = append(opts, alipay.WithSandboxGateway(cfg.Gateway))
+		}
+	}
+
 	// 创建支付宝客户端
-	client, err := alipay.New(cfg.AppID, cfg.PrivateKey, cfg.IsProduction)
+	client, err := alipay.New(cfg.AppID, cfg.PrivateKey, isProduction, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alipay client: %w", err)
 	}
@@ -42,15 +55,20 @@ func NewProvider(cfg *Config) (*Provider, error) {
 		return nil, fmt.Errorf("failed to load alipay public key: %w", err)
 	}
 
-	logger.Info("Alipay provider initialized successfully, appID=%s, isProduction=%v", cfg.AppID, cfg.IsProduction)
+	logger.Info("Alipay provider initialized successfully, appID=%s, isProduction=%v", cfg.AppID, isProduction)
 
 	return &Provider{
 		appID:           cfg.AppID,
 		privateKey:      cfg.PrivateKey,
 		alipayPublicKey: cfg.AlipayPublicKey,
-		isProduction:    cfg.IsProduction,
+		isProduction:    isProduction,
 		client:          client,
 	}, nil
+}
+
+// AppID 返回当前 Provider 绑定的应用 ID
+func (p *Provider) AppID() string {
+	return p.appID
 }
 
 // Name 返回渠道名称

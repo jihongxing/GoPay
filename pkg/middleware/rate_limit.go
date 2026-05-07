@@ -19,6 +19,13 @@ type RateLimitConfig struct {
 
 // RateLimit 限流中间件
 func RateLimit(client *redis.Client, config RateLimitConfig) gin.HandlerFunc {
+	if config.Rate <= 0 {
+		config.Rate = 1
+	}
+	if config.Burst <= 0 {
+		config.Burst = config.Rate
+	}
+
 	ipLimiter := limiter.NewIPRateLimiter(client, config.Rate, config.Burst)
 
 	return func(c *gin.Context) {
@@ -29,8 +36,8 @@ func RateLimit(client *redis.Client, config RateLimitConfig) gin.HandlerFunc {
 		allowed, err := ipLimiter.Allow(ctx, ip)
 		if err != nil {
 			logger.Error("Rate limit check failed: %v", err)
-			// 限流检查失败，允许请求通过（fail open）
-			c.Next()
+			response.TooManyRequests(c, "限流服务暂不可用，请稍后再试")
+			c.Abort()
 			return
 		}
 

@@ -149,19 +149,20 @@ func TestConfigService_CreateChannelConfig(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
 	defer db.Close()
+	t.Setenv("MASTER_KEY", "unit-test-master-key")
 
 	service := NewConfigService(db)
 	now := time.Now()
 	cfg := &models.ChannelConfig{
 		AppID:   "app-1",
 		Channel: "wechat_native",
-		Config:  `{"mch_id":"123"}`,
+		Config:  `{"mch_id":"123","private_key":"plain-secret"}`,
 		Status:  "active",
 	}
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO channel_configs \\(app_id, channel, config, status\\)").
-		WithArgs(cfg.AppID, cfg.Channel, cfg.Config, cfg.Status).
+		WithArgs(cfg.AppID, cfg.Channel, sqlmock.AnyArg(), cfg.Status).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(9, now, now))
 	mock.ExpectExec("INSERT INTO config_audit_logs").
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -170,6 +171,7 @@ func TestConfigService_CreateChannelConfig(t *testing.T) {
 	err = service.CreateChannelConfig(context.Background(), cfg, "operator", "127.0.0.1", "ua")
 	assert.NoError(t, err)
 	assert.Equal(t, int64(9), cfg.ID)
+	assert.Contains(t, cfg.Config, "enc:v1:")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

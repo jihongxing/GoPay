@@ -63,7 +63,7 @@
 | | 手机网站支付 | 手机浏览器 | ✅ |
 | | APP 支付 | 原生应用 | ✅ |
 | | 当面付 | 线下收银 | ✅ |
-| **Stripe** | Checkout | 国际支付 | 🚧 脚手架 |
+| **Stripe** | Checkout | 国际支付 | ✅ |
 
 ---
 
@@ -85,8 +85,8 @@ cd gopay
 ### 2. 启动数据库
 
 ```bash
-# 使用 Docker Compose 启动 PostgreSQL
-docker-compose up -d postgres
+# 使用 Podman Compose 启动 PostgreSQL
+podman compose --env-file .env.example up -d postgres
 
 # 或使用 Make 命令
 make db-up
@@ -134,8 +134,8 @@ ALERT_WEBHOOK_URL=https://your-alert-webhook
 **支付宝配置**
 ```bash
 ALIPAY_APP_ID=your_alipay_app_id
-ALIPAY_APP_PRIVATE_KEY=your_alipay_private_key
-ALIPAY_PUBLIC_KEY=alipay_public_key
+ALIPAY_APP_PRIVATE_KEY_PATH=certs/alipay/app_private_key.pem
+ALIPAY_PUBLIC_KEY_PATH=certs/alipay/alipay_public_key.pem
 ALIPAY_GATEWAY_URL=https://openapi.alipay.com/gateway.do
 ```
 
@@ -217,6 +217,10 @@ curl -X POST http://localhost:8080/api/v1/checkout \
 ### 📚 技术文档
 - [技术架构文档](docs/GoPay%20统一支付网关%20-%20技术架构与实施方案.md) - 架构设计和实施方案
 - [项目状态报告](docs/PROJECT_STATUS.md) - 当前实现状态和进度
+
+### 🔧 运维文档
+- [运维手册](docs/运维手册.md) - 日常运维操作指南
+- [故障排查指南](docs/故障排查指南.md) - 常见问题排查和解决
 
 ---
 
@@ -363,29 +367,29 @@ make test-coverage
 
 ---
 
-## 🐳 Docker 部署
+## 🐳 容器部署
 
-### 使用 Docker Compose（推荐）
+### 使用 Podman Compose（推荐）
 
 ```bash
 # 启动所有服务
-docker-compose up -d
+podman compose --env-file .env up -d
 
 # 查看日志
-docker-compose logs -f gopay
+podman compose --env-file .env logs -f gopay
 
 # 停止服务
-docker-compose down
+podman compose --env-file .env down
 ```
 
-### 使用 Docker
+### 使用 Podman
 
 ```bash
 # 构建镜像
-docker build -t gopay:latest .
+podman build -t gopay:latest .
 
 # 运行容器
-docker run -d \
+podman run -d \
   --name gopay \
   -p 8080:8080 \
   -e DB_HOST=your_db_host \
@@ -475,9 +479,9 @@ docker run -d \
 - [x] Docker Compose 一键部署
 - [x] Kubernetes Helm Chart
 - [x] 多语言客户端示例（Go/Node.js/Python/React）
+- [x] Stripe 支付（Checkout Session + Webhook + 退款）
 
 ### 📅 计划中
-- [ ] Stripe 支付（脚手架已就位）
 - [ ] 银联支付
 - [ ] 提升测试覆盖率至 80%+
 - [ ] 分布式追踪（Jaeger 完整集成）
@@ -504,7 +508,7 @@ docker run -d \
 
 - **Issue**: [GitHub Issues](https://github.com/yourusername/gopay/issues)
 - **讨论**: [GitHub Discussions](https://github.com/yourusername/gopay/discussions)
-- **邮件**: your-email@example.com
+- **邮件**: jhongxing705@gmail.com
 
 ---
 

@@ -64,6 +64,32 @@ func (r *AlipayReconciler) Reconcile(ctx context.Context, date time.Time) (*Reco
 	return result, nil
 }
 
+// ReconcileByApp 按应用维度执行支付宝对账
+func (r *AlipayReconciler) ReconcileByApp(ctx context.Context, date time.Time, appID string) (*ReconcileResult, error) {
+	billData, err := r.billDownloader.Download(ctx, date)
+	if err != nil {
+		return nil, fmt.Errorf("download alipay bill failed: %w", err)
+	}
+
+	externalRecords, err := r.parseBill(billData)
+	if err != nil {
+		return nil, fmt.Errorf("parse alipay bill failed: %w", err)
+	}
+
+	internalOrders, err := r.orderRepo.GetOrdersByDateAndApp(ctx, date, "alipay", appID)
+	if err != nil {
+		return nil, fmt.Errorf("get internal orders failed: %w", err)
+	}
+
+	result := r.compare(externalRecords, internalOrders)
+	result.Date = date
+	result.Channel = "alipay"
+	result.AppID = appID
+	result.CreatedAt = time.Now()
+
+	return result, nil
+}
+
 // parseBill 解析支付宝账单
 func (r *AlipayReconciler) parseBill(data []byte) ([]BillRecord, error) {
 	var records []BillRecord
@@ -245,7 +271,10 @@ func (d *AlipayBillDownloader) Download(ctx context.Context, date time.Time) ([]
 
 func newAlipayBillClientFromEnv() (*alipay.Client, error) {
 	appID := os.Getenv("ALIPAY_APP_ID")
-	privateKey := os.Getenv("ALIPAY_APP_PRIVATE_KEY")
+	privateKey, err := loadEnvValueOrFile("ALIPAY_APP_PRIVATE_KEY", "ALIPAY_APP_PRIVATE_KEY_PATH")
+	if err != nil {
+		return nil, err
+	}
 	if appID == "" || privateKey == "" {
 		return nil, fmt.Errorf("alipay bill downloader env is incomplete")
 	}
@@ -266,11 +295,32 @@ func newAlipayBillClientFromEnv() (*alipay.Client, error) {
 		return nil, err
 	}
 
-	if publicKey := os.Getenv("ALIPAY_PUBLIC_KEY"); publicKey != "" {
+	publicKey, err := loadEnvValueOrFile("ALIPAY_PUBLIC_KEY", "ALIPAY_PUBLIC_KEY_PATH")
+	if err != nil {
+		return nil, err
+	}
+	if publicKey != "" {
 		if err := client.LoadAliPayPublicKey(publicKey); err != nil {
 			return nil, err
 		}
 	}
 
 	return client, nil
+}
+
+func loadEnvValueOrFile(valueKey, pathKey string) (string, error) {
+	if value := os.Getenv(valueKey); value != "" {
+		return value, nil
+	}
+
+	path := os.Getenv(pathKey)
+	if path == "" {
+		return "", nil
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s failed: %w", pathKey, err)
+	}
+	return strings.TrimSpace(string(content)), nil
 }

@@ -40,6 +40,7 @@ func NewReconciliationService(db ...*sql.DB) *ReconciliationService {
 type ReconcileResult struct {
 	Date           time.Time        // 对账日期
 	Channel        string           // 支付渠道
+	AppID          string           // 应用ID（可选，用于按应用维度对账）
 	TotalOrders    int              // 总订单数
 	MatchedOrders  int              // 匹配订单数
 	MissingOrders  []string         // 长款（外部有但内部无）
@@ -133,32 +134,66 @@ func (s *ReconciliationService) GenerateReport(ctx context.Context, result *Reco
 
 func (s *ReconciliationService) saveReport(ctx context.Context, result *ReconcileResult, path string) (int64, error) {
 	var id int64
-	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO reconciliation_reports (
-			date, channel, total_orders, matched_orders,
-			long_orders, short_orders, amount_mismatch, status, file_path, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
-		ON CONFLICT (date, channel) DO UPDATE SET
-			total_orders = EXCLUDED.total_orders,
-			matched_orders = EXCLUDED.matched_orders,
-			long_orders = EXCLUDED.long_orders,
-			short_orders = EXCLUDED.short_orders,
-			amount_mismatch = EXCLUDED.amount_mismatch,
-			status = EXCLUDED.status,
-			file_path = EXCLUDED.file_path,
-			updated_at = NOW()
-		RETURNING id
-	`,
-		result.Date.Format("2006-01-02"),
-		result.Channel,
-		result.TotalOrders,
-		result.MatchedOrders,
-		len(result.MissingOrders),
-		len(result.ExtraOrders),
-		len(result.AmountMismatch),
-		result.Status,
-		path,
-	).Scan(&id)
+
+	// 根据是否有 app_id 使用不同的 SQL
+	var err error
+	if result.AppID != "" {
+		err = s.db.QueryRowContext(ctx, `
+			INSERT INTO reconciliation_reports (
+				date, channel, app_id, total_orders, matched_orders,
+				long_orders, short_orders, amount_mismatch, status, file_path, created_at, updated_at
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW())
+			ON CONFLICT (date, channel, COALESCE(app_id, '')) DO UPDATE SET
+				total_orders = EXCLUDED.total_orders,
+				matched_orders = EXCLUDED.matched_orders,
+				long_orders = EXCLUDED.long_orders,
+				short_orders = EXCLUDED.short_orders,
+				amount_mismatch = EXCLUDED.amount_mismatch,
+				status = EXCLUDED.status,
+				file_path = EXCLUDED.file_path,
+				updated_at = NOW()
+			RETURNING id
+		`,
+			result.Date.Format("2006-01-02"),
+			result.Channel,
+			result.AppID,
+			result.TotalOrders,
+			result.MatchedOrders,
+			len(result.MissingOrders),
+			len(result.ExtraOrders),
+			len(result.AmountMismatch),
+			result.Status,
+			path,
+		).Scan(&id)
+	} else {
+		err = s.db.QueryRowContext(ctx, `
+			INSERT INTO reconciliation_reports (
+				date, channel, total_orders, matched_orders,
+				long_orders, short_orders, amount_mismatch, status, file_path, created_at, updated_at
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
+			ON CONFLICT (date, channel, COALESCE(app_id, '')) DO UPDATE SET
+				total_orders = EXCLUDED.total_orders,
+				matched_orders = EXCLUDED.matched_orders,
+				long_orders = EXCLUDED.long_orders,
+				short_orders = EXCLUDED.short_orders,
+				amount_mismatch = EXCLUDED.amount_mismatch,
+				status = EXCLUDED.status,
+				file_path = EXCLUDED.file_path,
+				updated_at = NOW()
+			RETURNING id
+		`,
+			result.Date.Format("2006-01-02"),
+			result.Channel,
+			result.TotalOrders,
+			result.MatchedOrders,
+			len(result.MissingOrders),
+			len(result.ExtraOrders),
+			len(result.AmountMismatch),
+			result.Status,
+			path,
+		).Scan(&id)
+	}
+
 	if err != nil {
 		return 0, fmt.Errorf("save reconciliation report failed: %w", err)
 	}

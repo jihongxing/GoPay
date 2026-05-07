@@ -46,7 +46,7 @@ func (p *AppProvider) CreateOrder(ctx context.Context, req *channel.CreateOrderR
 	logger.Info("Creating wechat APP order: orderID=%s, amount=%d", req.OrderID, req.Amount)
 
 	// 验证必需参数
-	appID := req.ExtraData["app_id"]
+	appID := firstNonEmpty(req.ExtraData["app_id"], p.appID)
 	if appID == "" {
 		return nil, fmt.Errorf("app_id is required for APP payment")
 	}
@@ -91,12 +91,12 @@ func (p *AppProvider) CreateOrder(ctx context.Context, req *channel.CreateOrderR
 		PlatformTradeNo: req.BizOrderNo,
 		PrepayID:        *resp.PrepayId,
 		ExtraData: map[string]string{
-			"prepay_id": *resp.PrepayId,
+			"prepay_id":  *resp.PrepayId,
 			"partner_id": *resp.PartnerId,
-			"package":   *resp.Package,
-			"timestamp": *resp.TimeStamp,
-			"nonce_str": *resp.NonceStr,
-			"sign":      *resp.Sign,
+			"package":    *resp.Package,
+			"timestamp":  *resp.TimeStamp,
+			"nonce_str":  *resp.NonceStr,
+			"sign":       *resp.Sign,
 		},
 	}, nil
 }

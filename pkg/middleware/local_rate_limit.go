@@ -8,21 +8,29 @@ import (
 	"gopay/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
 )
 
 // LocalRateLimitConfig 本地限流配置
 type LocalRateLimitConfig struct {
-	Rate  int // 每个时间窗口允许的请求数
+	Rate  int // 每秒允许的请求数
 	Burst int // 突发容量
 }
 
 type ipEntry struct {
-	count   int
+	limiter *rate.Limiter
 	resetAt time.Time
 }
 
 // LocalRateLimit 基于内存的 IP 限流中间件（无 Redis 依赖）
 func LocalRateLimit(config LocalRateLimitConfig) gin.HandlerFunc {
+	if config.Rate <= 0 {
+		config.Rate = 1
+	}
+	if config.Burst <= 0 {
+		config.Burst = config.Rate
+	}
+
 	var mu sync.Mutex
 	entries := make(map[string]*ipEntry)
 
@@ -49,21 +57,24 @@ func LocalRateLimit(config LocalRateLimitConfig) gin.HandlerFunc {
 		mu.Lock()
 		e, exists := entries[ip]
 		if !exists || now.After(e.resetAt) {
-			entries[ip] = &ipEntry{count: 1, resetAt: now.Add(time.Second)}
-			mu.Unlock()
-			c.Next()
-			return
+			e = &ipEntry{
+				limiter: rate.NewLimiter(rate.Limit(config.Rate), config.Burst),
+				resetAt: now.Add(time.Minute),
+			}
+			entries[ip] = e
 		}
 
-		e.count++
-		if e.count > config.Burst {
-			mu.Unlock()
+		e.resetAt = now.Add(time.Minute)
+		allowed := e.limiter.Allow()
+		mu.Unlock()
+
+		if !allowed {
 			logger.Error("Rate limit exceeded for IP: %s", ip)
 			response.TooManyRequests(c, "请求过于频繁，请稍后再试")
 			c.Abort()
 			return
 		}
-		mu.Unlock()
+
 		c.Next()
 	}
 }

@@ -50,6 +50,18 @@ func Load() (*Config, error) {
 		LogFile:  getEnv("LOG_FILE", ""),
 	}
 
+	if cfg.ServerEnv == "production" {
+		if !hasEnv("SERVER_ENV") {
+			return nil, fmt.Errorf("SERVER_ENV must be explicitly set in production")
+		}
+		if !hasEnv("ADMIN_API_KEY") {
+			return nil, fmt.Errorf("ADMIN_API_KEY must be explicitly set in production")
+		}
+		if !hasEnv("PUBLIC_BASE_URL") {
+			return nil, fmt.Errorf("PUBLIC_BASE_URL must be explicitly set in production")
+		}
+	}
+
 	// 验证配置
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -113,4 +125,9 @@ func getEnvRequired(key string) string {
 		return ""
 	}
 	return value
+}
+
+func hasEnv(key string) bool {
+	_, ok := os.LookupEnv(key)
+	return ok
 }

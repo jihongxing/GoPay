@@ -59,6 +59,19 @@ func (h *WebHandler) RegisterRoutesWithAuth(r *gin.Engine, authMiddleware ...gin
 			api.GET("/reconciliation/:id", h.GetReconciliationDetail)
 			api.GET("/reconciliation/:id/download", h.DownloadReport)
 
+			// 按应用维度对账
+			api.GET("/reconciliation/by-app", h.GetReconciliationByApp)
+			api.GET("/reconciliation/app-stats", h.GetAppReconciliationStats)
+			api.GET("/reconciliation/apps-summary", h.GetAllAppsReconciliationSummary)
+			api.GET("/apps/list", h.GetAppList)
+
+			// 配置模板
+			api.GET("/templates", h.GetConfigTemplates)
+			api.GET("/templates/:id", h.GetConfigTemplate)
+			api.GET("/templates/channel/:channel", h.GetConfigTemplateByChannel)
+			api.GET("/channels/list", h.GetChannelList)
+			api.POST("/apps/quick-setup", h.QuickSetupApp)
+
 			// 统计图表
 			api.GET("/stats/orders", h.GetOrderStats)
 			api.GET("/stats/notifications", h.GetNotificationStats)
@@ -121,14 +134,14 @@ func (h *WebHandler) GetStats(c *gin.Context) {
 	var failedOrders int
 	h.db.QueryRow(`
 		SELECT COUNT(*) FROM orders
-		WHERE DATE(created_at) = $1 AND status = 'failed'
+		WHERE DATE(created_at) = $1 AND status = 'closed'
 	`, today).Scan(&failedOrders)
 
 	// 通知失败数
 	var failedNotifications int
 	h.db.QueryRow(`
 		SELECT COUNT(*) FROM orders
-		WHERE notify_status = 'failed'
+		WHERE notify_status = 'failed_notify'
 	`).Scan(&failedNotifications)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -156,7 +169,7 @@ func (h *WebHandler) GetFailedOrders(c *gin.Context) {
 	offset := (page - 1) * pageSize
 
 	// 构建查询条件
-	where := "WHERE (status = 'failed' OR notify_status = 'failed')"
+	where := "WHERE (status = 'closed' OR notify_status = 'failed_notify')"
 	args := []interface{}{}
 	argIndex := 1
 
@@ -257,6 +270,7 @@ func (h *WebHandler) GetFailedOrders(c *gin.Context) {
 // SearchOrder 搜索订单
 func (h *WebHandler) SearchOrder(c *gin.Context) {
 	outTradeNo := c.Query("out_trade_no")
+	appIDFilter := c.Query("app_id")
 	if outTradeNo == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    "ERROR",
@@ -271,13 +285,22 @@ func (h *WebHandler) SearchOrder(c *gin.Context) {
 	var paidAt, notifiedAt sql.NullTime
 	var channelOrderNo, payURL sql.NullString
 
-	err := h.db.QueryRow(`
-		SELECT order_no, out_trade_no, app_id, channel, amount,
-		       status, notify_status, notify_url, retry_count, channel_order_no,
-		       pay_url, created_at, paid_at, notified_at, updated_at
-		FROM orders
-		WHERE out_trade_no = $1
-	`, outTradeNo).Scan(&orderNo, &outTradeNo, &appID, &channel, &amount,
+	query := `
+		SELECT o.order_no, o.out_trade_no, o.app_id, o.channel, o.amount,
+		       o.status, o.notify_status, a.callback_url, o.retry_count, o.channel_order_no,
+		       o.pay_url, o.created_at, o.paid_at, o.notified_at, o.updated_at
+		FROM orders o
+		JOIN apps a ON a.app_id = o.app_id
+		WHERE o.out_trade_no = $1
+	`
+	args := []interface{}{outTradeNo}
+	if appIDFilter != "" {
+		query += " AND o.app_id = $2"
+		args = append(args, appIDFilter)
+	}
+	query += " ORDER BY o.created_at DESC LIMIT 1"
+
+	err := h.db.QueryRow(query, args...).Scan(&orderNo, &outTradeNo, &appID, &channel, &amount,
 		&status, &notifyStatus, &notifyURL, &retryCount, &channelOrderNo,
 		&payURL, &createdAt, &paidAt, &notifiedAt, &updatedAt)
 
@@ -342,11 +365,12 @@ func (h *WebHandler) GetOrderDetail(c *gin.Context) {
 	var channelOrderNo, payURL sql.NullString
 
 	err := h.db.QueryRow(`
-		SELECT order_no, out_trade_no, app_id, channel, amount,
-		       status, notify_status, notify_url, retry_count, channel_order_no,
-		       pay_url, created_at, paid_at, notified_at, updated_at
-		FROM orders
-		WHERE order_no = $1
+		SELECT o.order_no, o.out_trade_no, o.app_id, o.channel, o.amount,
+		       o.status, o.notify_status, a.callback_url, o.retry_count, o.channel_order_no,
+		       o.pay_url, o.created_at, o.paid_at, o.notified_at, o.updated_at
+		FROM orders o
+		JOIN apps a ON a.app_id = o.app_id
+		WHERE o.order_no = $1
 	`, orderNo).Scan(&orderNo, &outTradeNo, &appID, &channel, &amount,
 		&status, &notifyStatus, &notifyURL, &retryCount, &channelOrderNo,
 		&payURL, &createdAt, &paidAt, &notifiedAt, &updatedAt)
@@ -415,6 +439,14 @@ func (h *WebHandler) RetryOrder(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    "ERROR",
 			"message": "订单不存在",
+		})
+		return
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    "ERROR",
+			"message": "查询失败",
 		})
 		return
 	}
@@ -687,7 +719,7 @@ func (h *WebHandler) GetReconciliationDetail(c *gin.Context) {
 		mismatchRows, _ := h.db.Query(`
 			SELECT order_no, internal_amount, external_amount
 			FROM reconciliation_details
-			WHERE report_id = $1 AND type = 'mismatch'
+			WHERE report_id = $1 AND type = 'amount_mismatch'
 			LIMIT 100
 		`, id)
 		defer mismatchRows.Close()
@@ -786,7 +818,7 @@ func (h *WebHandler) GetOrderStats(c *gin.Context) {
 		SELECT DATE(created_at) as date,
 		       COUNT(*) as total,
 		       COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid,
-		       COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed
+		       COUNT(CASE WHEN status = 'closed' THEN 1 END) as failed
 		FROM orders
 		WHERE created_at >= NOW() - INTERVAL '1 day' * $1
 		GROUP BY DATE(created_at)
@@ -833,7 +865,7 @@ func (h *WebHandler) GetNotificationStats(c *gin.Context) {
 	rows, err := h.db.Query(`
 		SELECT DATE(created_at) as date,
 		       COUNT(CASE WHEN notify_status = 'notified' THEN 1 END) as success,
-		       COUNT(CASE WHEN notify_status = 'failed' THEN 1 END) as failed,
+		       COUNT(CASE WHEN notify_status = 'failed_notify' THEN 1 END) as failed,
 		       COUNT(CASE WHEN notify_status = 'pending' THEN 1 END) as pending
 		FROM orders
 		WHERE created_at >= NOW() - INTERVAL '1 day' * $1

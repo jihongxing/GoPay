@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+if [ "${SERVER_ENV}" = "production" ]; then
+  : "${ADMIN_API_KEY:?ADMIN_API_KEY must be set in production}"
+  : "${PUBLIC_BASE_URL:?PUBLIC_BASE_URL must be set in production}"
+fi
+
 # 等待数据库就绪
 echo "Waiting for database..."
 until PGPASSWORD=$DB_PASSWORD psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c '\q' 2>/dev/null; do
@@ -25,4 +30,4 @@ fi
 
 # 启动应用
 echo "Starting application..."
-exec /app/gopay
+exec "$@"

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"gopay/internal/models"
@@ -96,6 +97,9 @@ func (s *RefundService) Refund(ctx context.Context, req *RefundRequest) (*Refund
 		RefundNo:   refundNo,
 		Amount:     refundAmount,
 		Reason:     req.Reason,
+		ExtraData: map[string]string{
+			"total_amount": strconv.FormatInt(order.Amount, 10),
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -200,7 +204,7 @@ func (s *RefundService) updateRefundStatus(ctx context.Context, orderNo string, 
 }
 
 func (s *RefundService) generateRefundNo() string {
-	return fmt.Sprintf("RFD_%s_%06d", time.Now().Format("20060102150405"), rand.Intn(1000000))
+	return fmt.Sprintf("REF_%s_%06d", time.Now().Format("20060102150405"), rand.Intn(1000000))
 }
 
 func (s *RefundService) generateTransactionNo() string {

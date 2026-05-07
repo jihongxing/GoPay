@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -28,6 +29,10 @@ type webhookChannelManager interface {
 
 type webhookChannelProviderLister interface {
 	ListProvidersByChannelPrefix(prefix string) ([]channel.PaymentChannel, error)
+}
+
+type appScopedProvider interface {
+	AppID() string
 }
 
 // InitWebhookServices 初始化 Webhook 相关服务
@@ -60,47 +65,20 @@ func WechatWebhook(c *gin.Context) {
 		Headers: headers,
 	}
 
-	// 从 webhook body 中解析 out_trade_no
-	outTradeNo, err := parseOutTradeNoFromWechatWebhook(body)
-	var webhookResp *channel.WebhookResponse
+	order, webhookResp, err := resolveWechatWebhook(c.Request.Context(), webhookReq)
 	if err != nil {
-		// 微信退款回调场景：out_trade_no 可能不在最外层，先尝试通过候选 Provider 验签解密
-		webhookResp, err = tryHandleWechatRefundWebhookByFallback(c.Request.Context(), webhookReq)
-		if err != nil {
-			logger.Error("Failed to parse out_trade_no from webhook: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"code": "FAIL", "message": "invalid webhook data"})
-			return
-		}
-		outTradeNo = webhookResp.PlatformTradeNo
-	}
-
-	// 通过 out_trade_no 查询订单获取 app_id
-	order, err := findOrderByOutTradeNo(c.Request.Context(), outTradeNo)
-	if err != nil {
-		logger.Error("Failed to find order by out_trade_no: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"code": "FAIL", "message": "order not found"})
-		return
-	}
-
-	appID := order.AppID
-	channelName := order.Channel
-
-	// 获取正确的支付渠道 Provider（用于签名验证）
-	provider, err := channelManager.GetProvider(appID, channelName)
-	if err != nil {
-		logger.Error("Failed to get payment provider: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "系统错误"})
-		return
-	}
-
-	// 调用 Provider 处理 Webhook（包含签名验证）
-	if webhookResp == nil {
-		webhookResp, err = provider.HandleWebhook(c.Request.Context(), webhookReq)
-		if err != nil {
-			logger.Error("Failed to handle webhook: %v", err)
+		logger.Error("Failed to resolve wechat webhook: %v", err)
+		switch {
+		case strings.Contains(err.Error(), "order not found"):
+			c.JSON(http.StatusBadRequest, gin.H{"code": "FAIL", "message": "order not found"})
+		case strings.Contains(err.Error(), "provider lookup failed"):
+			c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "系统错误"})
+		case strings.Contains(err.Error(), "handle webhook failed"):
 			c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "处理失败"})
-			return
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"code": "FAIL", "message": "invalid webhook data"})
 		}
+		return
 	}
 
 	if !webhookResp.Success {
@@ -177,13 +155,6 @@ func parseOutTradeNoFromWechatWebhook(body []byte) (string, error) {
 	return "", fmt.Errorf("out_trade_no not found in webhook body")
 }
 
-// findOrderByOutTradeNo 通过 out_trade_no 查找订单
-func findOrderByOutTradeNo(ctx context.Context, outTradeNo string) (*models.Order, error) {
-	// 注意：这里假设 out_trade_no 在系统中是全局唯一的
-	// 如果不是，需要在 webhook body 中包含 app_id
-	return orderService.QueryOrderByOutTradeNoGlobal(ctx, outTradeNo)
-}
-
 // AlipayWebhook 支付宝回调
 func AlipayWebhook(c *gin.Context) {
 	logger.Info("Received alipay webhook")
@@ -208,23 +179,29 @@ func AlipayWebhook(c *gin.Context) {
 		Headers: headers,
 	}
 
-	// 从 webhook body 中解析 out_trade_no
 	outTradeNo, err := parseOutTradeNoFromAlipayWebhook(body)
 	if err != nil {
-		logger.Error("Failed to parse out_trade_no from webhook: %v", err)
+		logger.Error("Failed to parse alipay out_trade_no: %v", err)
 		c.String(http.StatusOK, "failure")
 		return
 	}
 
-	// 通过 out_trade_no 查询订单获取 app_id
-	order, err := findOrderByOutTradeNo(c.Request.Context(), outTradeNo)
+	appID, err := parseAppIDFromAlipayWebhook(body)
+	var order *models.Order
+	if err == nil && appID != "" {
+		// 优先使用 app_id + out_trade_no 精确查询，兼容跨应用重复单号
+		order, err = findOrderByAppAndOutTradeNo(c.Request.Context(), appID, outTradeNo)
+	} else {
+		// 兼容旧测试和历史回调格式
+		order, err = findOrderByOutTradeNo(c.Request.Context(), outTradeNo)
+	}
 	if err != nil {
-		logger.Error("Failed to find order by out_trade_no: %v", err)
+		logger.Error("Failed to find alipay order: %v", err)
 		c.String(http.StatusOK, "failure")
 		return
 	}
 
-	appID := order.AppID
+	appID = order.AppID
 	channelName := order.Channel
 
 	// 获取正确的支付渠道 Provider（用于签名验证）
@@ -304,66 +281,127 @@ func AlipayWebhook(c *gin.Context) {
 
 // parseOutTradeNoFromAlipayWebhook 从支付宝 webhook body 中解析 out_trade_no
 func parseOutTradeNoFromAlipayWebhook(body []byte) (string, error) {
-	// 支付宝回调是 form 格式，需要解析
-	var data map[string]interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
+	values, err := parseAlipayWebhookValues(body)
+	if err != nil {
 		return "", err
 	}
-
-	if outTradeNo, ok := data["out_trade_no"].(string); ok {
-		return outTradeNo, nil
+	outTradeNo := values.Get("out_trade_no")
+	if outTradeNo == "" {
+		return "", fmt.Errorf("out_trade_no not found in webhook body")
 	}
-
-	return "", fmt.Errorf("out_trade_no not found in webhook body")
+	return outTradeNo, nil
 }
 
-func tryHandleWechatRefundWebhookByFallback(ctx context.Context, req *channel.WebhookRequest) (*channel.WebhookResponse, error) {
-	if !isWechatRefundEvent(req.RawBody) {
-		return nil, fmt.Errorf("out_trade_no not found in webhook body")
+func parseAppIDFromAlipayWebhook(body []byte) (string, error) {
+	values, err := parseAlipayWebhookValues(body)
+	if err != nil {
+		return "", err
+	}
+	appID := values.Get("app_id")
+	if appID == "" {
+		return "", fmt.Errorf("app_id not found in webhook body")
+	}
+	return appID, nil
+}
+
+// findOrderByOutTradeNo 兼容旧测试和旧调用路径
+func findOrderByOutTradeNo(ctx context.Context, outTradeNo string) (*models.Order, error) {
+	if orderService == nil {
+		return nil, fmt.Errorf("order service is not initialized")
+	}
+	return orderService.QueryOrderByOutTradeNoGlobal(ctx, outTradeNo)
+}
+
+func findOrderByAppAndOutTradeNo(ctx context.Context, appID, outTradeNo string) (*models.Order, error) {
+	if orderService == nil {
+		return nil, fmt.Errorf("order service is not initialized")
+	}
+	return orderService.QueryOrderByOutTradeNo(ctx, appID, outTradeNo)
+}
+
+func resolveWechatWebhook(ctx context.Context, req *channel.WebhookRequest) (*models.Order, *channel.WebhookResponse, error) {
+	outTradeNo, err := parseOutTradeNoFromWechatWebhook(req.RawBody)
+	if err == nil {
+		order, err := findOrderByOutTradeNo(ctx, outTradeNo)
+		if err != nil {
+			return nil, nil, err
+		}
+		provider, err := channelManager.GetProvider(order.AppID, order.Channel)
+		if err != nil {
+			return nil, nil, fmt.Errorf("provider lookup failed: %w", err)
+		}
+		resp, err := provider.HandleWebhook(ctx, req)
+		if err != nil {
+			return nil, nil, fmt.Errorf("handle webhook failed: %w", err)
+		}
+		return order, resp, nil
 	}
 
 	lister, ok := channelManager.(webhookChannelProviderLister)
-	if !ok {
-		return nil, fmt.Errorf("refund fallback is not supported")
+	if ok {
+		providers, err := lister.ListProvidersByChannelPrefix("wechat_")
+		if err != nil {
+			return nil, nil, err
+		}
+		var lastErr error
+		for _, provider := range providers {
+			resp, err := provider.HandleWebhook(ctx, req)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if resp == nil || !resp.Success {
+				continue
+			}
+			if resp.PlatformTradeNo == "" {
+				lastErr = fmt.Errorf("platform trade no is empty in wechat webhook response")
+				continue
+			}
+
+			if scoped, ok := provider.(appScopedProvider); ok && scoped.AppID() != "" {
+				order, err := findOrderByAppAndOutTradeNo(ctx, scoped.AppID(), resp.PlatformTradeNo)
+				if err == nil {
+					return order, resp, nil
+				}
+				lastErr = err
+				continue
+			}
+
+			order, err := findOrderByOutTradeNo(ctx, resp.PlatformTradeNo)
+			if err == nil {
+				return order, resp, nil
+			}
+			lastErr = err
+		}
+
+		if lastErr != nil {
+			return nil, nil, lastErr
+		}
 	}
 
-	providers, err := lister.ListProvidersByChannelPrefix("wechat_")
+	return nil, nil, err
+}
+
+func parseAlipayWebhookValues(body []byte) (url.Values, error) {
+	values, err := url.ParseQuery(string(body))
 	if err != nil {
 		return nil, err
 	}
-	if len(providers) == 0 {
-		return nil, fmt.Errorf("wechat provider not found")
+	if values.Get("out_trade_no") != "" || values.Get("app_id") != "" || values.Get("trade_no") != "" {
+		return values, nil
 	}
 
-	var lastErr error
-	for _, provider := range providers {
-		resp, err := provider.HandleWebhook(ctx, req)
-		if err != nil {
-			lastErr = err
-			continue
+	var data map[string]string
+	if err := json.Unmarshal(body, &data); err == nil && len(data) > 0 {
+		fallback := url.Values{}
+		for key, value := range data {
+			fallback.Set(key, value)
 		}
-		if resp == nil || !resp.Success {
-			continue
-		}
-		if resp.PlatformTradeNo == "" {
-			lastErr = fmt.Errorf("platform trade no is empty in refund webhook response")
-			continue
-		}
-		return resp, nil
+		return fallback, nil
 	}
 
-	if lastErr != nil {
-		return nil, lastErr
+	if len(values) == 0 {
+		return nil, fmt.Errorf("empty alipay webhook body")
 	}
-	return nil, fmt.Errorf("no provider matched refund webhook")
-}
-
-func isWechatRefundEvent(body []byte) bool {
-	var envelope struct {
-		EventType string `json:"event_type"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return false
-	}
-	return strings.Contains(strings.ToUpper(envelope.EventType), "REFUND")
+	return values, nil
 }

@@ -16,6 +16,8 @@ import (
 	"gopay/pkg/logger"
 )
 
+const maxNotifyRetries = 5
+
 // NotifyService 异步通知服务
 type NotifyService struct {
 	db           *sql.DB
@@ -93,8 +95,7 @@ func (s *NotifyService) NotifyAsync(order *models.Order) {
 			s.notifyWithRetry(ctx, order, app.CallbackURL)
 		}()
 	default:
-		// 工作池已满，记录日志但不阻塞
-		logger.Error("Worker pool is full, cannot notify order: %s", order.OrderNo)
+		s.recordDeferredNotify(order, "worker pool is full, notify deferred")
 	}
 }
 
@@ -133,8 +134,35 @@ func (s *NotifyService) NotifyRefundAsync(order *models.Order, webhookResp *chan
 			s.notifyWithRetryPayload(ctx, order, app.CallbackURL, payload)
 		}()
 	default:
-		logger.Error("Worker pool is full, cannot notify refund: %s", order.OrderNo)
+		s.recordDeferredNotify(order, "worker pool is full, refund notify deferred")
 	}
+}
+
+// StartRetryScheduler 启动待通知订单补偿任务
+func (s *NotifyService) StartRetryScheduler(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Minute
+	}
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		if err := s.ProcessPendingNotifies(context.Background()); err != nil {
+			logger.Error("Failed to process pending notifies on startup: %v", err)
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.ProcessPendingNotifies(context.Background()); err != nil {
+					logger.Error("Failed to process pending notifies: %v", err)
+				}
+			}
+		}
+	}()
 }
 
 // notifyWithRetry 带重试的通知（铁律二：最多5次重试，指数退避）
@@ -144,8 +172,6 @@ func (s *NotifyService) notifyWithRetry(ctx context.Context, order *models.Order
 
 // notifyWithRetryPayload 带重试的通知（通用版本，支持自定义 payload）
 func (s *NotifyService) notifyWithRetryPayload(ctx context.Context, order *models.Order, callbackURL string, payload interface{}) {
-	maxRetries := 5
-
 	bodyBytes, err := json.Marshal(payload)
 	if err != nil {
 		logger.Error("Failed to marshal notify payload: orderNo=%s, error=%v", order.OrderNo, err)
@@ -153,8 +179,8 @@ func (s *NotifyService) notifyWithRetryPayload(ctx context.Context, order *model
 	}
 	bodyStr := string(bodyBytes)
 
-	for i := 0; i < maxRetries; i++ {
-		logger.Info("Notifying business system: orderNo=%s, attempt=%d/%d", order.OrderNo, i+1, maxRetries)
+	for i := 0; i < maxNotifyRetries; i++ {
+		logger.Info("Notifying business system: orderNo=%s, attempt=%d/%d", order.OrderNo, i+1, maxNotifyRetries)
 
 		// 执行通知
 		success, statusCode, respBody, duration, err := s.doNotifyPayload(ctx, callbackURL, bodyBytes)
@@ -182,7 +208,7 @@ func (s *NotifyService) notifyWithRetryPayload(ctx context.Context, order *model
 		}
 
 		// 通知失败，判断是否继续重试
-		if i < maxRetries-1 {
+		if i < maxNotifyRetries-1 {
 			// 指数退避：1s, 2s, 4s, 8s, 16s
 			backoff := time.Duration(1<<uint(i)) * time.Second
 			logger.Info("Notify failed, retry after %v: orderNo=%s, error=%v", backoff, order.OrderNo, err)
@@ -352,6 +378,24 @@ func (s *NotifyService) alertOps(order *models.Order) {
 	if s.alertManager != nil {
 		s.alertManager.AlertNotifyFailed(order)
 	}
+}
+
+func (s *NotifyService) recordDeferredNotify(order *models.Order, reason string) {
+	if order == nil {
+		return
+	}
+
+	logger.Error("Notify deferred: orderNo=%s, reason=%s", order.OrderNo, reason)
+	s.saveNotifyLog(&models.NotifyLog{
+		OrderNo:        order.OrderNo,
+		CallbackURL:    "",
+		RequestBody:    s.buildNotifyRequestBody(order),
+		ResponseStatus: 0,
+		ResponseBody:   "",
+		Success:        false,
+		ErrorMsg:       reason,
+		DurationMs:     0,
+	})
 }
 
 // RetryNotify 手动重试通知（内部管理接口使用）

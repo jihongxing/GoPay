@@ -67,6 +67,32 @@ func (r *WechatReconciler) Reconcile(ctx context.Context, date time.Time) (*Reco
 	return result, nil
 }
 
+// ReconcileByApp 按应用维度执行微信对账
+func (r *WechatReconciler) ReconcileByApp(ctx context.Context, date time.Time, appID string) (*ReconcileResult, error) {
+	billData, err := r.billDownloader.Download(ctx, date)
+	if err != nil {
+		return nil, fmt.Errorf("download wechat bill failed: %w", err)
+	}
+
+	externalRecords, err := r.parseBill(billData)
+	if err != nil {
+		return nil, fmt.Errorf("parse wechat bill failed: %w", err)
+	}
+
+	internalOrders, err := r.orderRepo.GetOrdersByDateAndApp(ctx, date, "wechat", appID)
+	if err != nil {
+		return nil, fmt.Errorf("get internal orders failed: %w", err)
+	}
+
+	result := r.compare(externalRecords, internalOrders)
+	result.Date = date
+	result.Channel = "wechat"
+	result.AppID = appID
+	result.CreatedAt = time.Now()
+
+	return result, nil
+}
+
 // parseBill 解析微信账单
 func (r *WechatReconciler) parseBill(data []byte) ([]BillRecord, error) {
 	var records []BillRecord
@@ -265,6 +291,7 @@ func newWechatBillClientFromEnv() (*core.Client, error) {
 // OrderRepository 订单仓储接口
 type OrderRepository interface {
 	GetOrdersByDate(ctx context.Context, date time.Time, channel string) ([]Order, error)
+	GetOrdersByDateAndApp(ctx context.Context, date time.Time, channel, appID string) ([]Order, error)
 }
 
 type Order struct {
@@ -284,5 +311,9 @@ type orderRepository struct{}
 func (r *orderRepository) GetOrdersByDate(ctx context.Context, date time.Time, channel string) ([]Order, error) {
 	// 这个方法需要在初始化时注入数据库连接
 	// 当前返回空列表，实际使用时需要通过构造函数注入 *sql.DB
+	return []Order{}, nil
+}
+
+func (r *orderRepository) GetOrdersByDateAndApp(ctx context.Context, date time.Time, channel, appID string) ([]Order, error) {
 	return []Order{}, nil
 }

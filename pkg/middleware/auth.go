@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/subtle"
+	"net"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -96,15 +97,25 @@ func IPWhitelist(config *AuthConfig) gin.HandlerFunc {
 
 // matchIP 匹配 IP（支持 CIDR）
 func matchIP(ip, pattern string) bool {
+	parsedIP := net.ParseIP(strings.TrimSpace(ip))
+	if parsedIP == nil {
+		return false
+	}
+
+	pattern = strings.TrimSpace(pattern)
+
 	// 精确匹配
-	if ip == pattern {
-		return true
+	if parsedPattern := net.ParseIP(pattern); parsedPattern != nil {
+		return parsedIP.Equal(parsedPattern)
 	}
 
 	// CIDR 匹配
-	if strings.Contains(pattern, "/") {
-		// 简化实现，实际应使用 net.ParseCIDR
-		return false
+	if _, ipNet, err := net.ParseCIDR(pattern); err == nil {
+		return ipNet.Contains(parsedIP)
+	}
+
+	if ip == pattern {
+		return true
 	}
 
 	return false

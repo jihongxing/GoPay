@@ -9,6 +9,9 @@ import (
 type ErrorType int
 
 const (
+	// 通用查询错误
+	TypeNotFound ErrorType = iota + 1
+
 	// 应用相关错误
 	TypeAppNotFound ErrorType = iota + 1
 	TypeAppInactive
@@ -42,6 +45,9 @@ const (
 
 // 定义业务错误类型（用于 errors.Is 判断）
 var (
+	// 通用查询错误
+	ErrNotFound = errors.New("not found")
+
 	// 应用相关错误
 	ErrAppNotFound = errors.New("app not found")
 	ErrAppInactive = errors.New("app inactive")

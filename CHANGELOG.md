@@ -10,9 +10,45 @@
 ## [Unreleased]
 
 ### 计划中
-- Stripe 支付完整实现
 - 银联支付支持
 - 测试覆盖率提升至 80%+
+
+---
+
+## [2.2.0] - 2026-04-19
+
+### 新增
+- Stripe 支付完整实现（Checkout Session 创建、订单查询、Webhook 处理、退款）
+- Stripe Webhook 签名验证（HMAC-SHA256，含时间戳容忍度检查）
+- Stripe Webhook handler 完整实现（支付成功、退款回调、异步通知业务系统）
+- RefundService 完整单元测试（10 个测试用例）
+- Alert 包完整单元测试（11 个测试用例，覆盖率 82.5%）
+- Middleware 认证/追踪/恢复测试（覆盖率 80.5%）
+- Stripe Provider 完整测试（22 个测试用例，覆盖率 100%）
+- 性能基准测试（BenchmarkHealthCheck、BenchmarkCheckoutValidation）
+- 压力测试脚本（scripts/load_test.sh）
+- 运维手册（docs/运维手册.md）
+- 故障排查指南（docs/故障排查指南.md）
+
+### 改进
+- Service 层测试覆盖率从 50.4% 提升至 57.3%
+- Middleware 测试覆盖率从 39.5% 提升至 80.5%
+- Alert 包测试覆盖率从 0% 提升至 82.5%
+- Stripe 包测试覆盖率从 0% 提升至 100%
+- 升级 Stripe SDK 至 v85（最新版本）
+
+### 技术细节
+- 重写 `pkg/channel/stripe/provider.go` — 完整 Stripe Checkout Session 集成
+- 重写 `internal/handler/webhook_stripe.go` — 完整 Webhook 处理
+- 新增 `internal/service/refund_service_test.go`
+- 新增 `pkg/alert/alert_test.go`
+- 新增 `pkg/middleware/auth_test.go`
+- 新增 `pkg/middleware/trace_test.go`
+- 新增 `pkg/channel/stripe/provider_test.go`
+- 新增 `internal/handler/benchmark_test.go`
+- 新增 `docs/运维手册.md`
+- 新增 `docs/故障排查指南.md`
+- 新增 `scripts/load_test.sh`
 
 ---
 

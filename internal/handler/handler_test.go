@@ -262,7 +262,7 @@ func TestListFailedOrders(t *testing.T) {
 
 	router := setupTestRouter(db)
 
-	// 设置期望的查询（注意：查询的是 status=paid, notify_status=pending）
+	// 设置期望的查询（通知失败订单）
 	now := time.Now()
 	rows := sqlmock.NewRows([]string{
 		"id", "order_no", "app_id", "out_trade_no", "channel", "amount",
@@ -270,12 +270,12 @@ func TestListFailedOrders(t *testing.T) {
 		"channel_order_no", "pay_url", "paid_at", "notified_at", "expires_at", "created_at", "updated_at",
 	}).AddRow(
 		1, "ORD_001", "test_app", "OUT_001", "wechat_native", 10000,
-		"CNY", "测试商品", "测试描述", "paid", "pending", 3,
+		"CNY", "测试商品", "测试描述", "paid", "failed_notify", 3,
 		"WX_001", "", &now, nil, now.Add(2*time.Hour), now, now,
 	)
 
-	mock.ExpectQuery("SELECT (.+) FROM orders WHERE status = \\$1 AND notify_status = \\$2 AND retry_count < 5").
-		WithArgs("paid", "pending", 100).
+	mock.ExpectQuery("SELECT (.+) FROM orders WHERE notify_status = \\$1").
+		WithArgs("failed_notify", 100).
 		WillReturnRows(rows)
 
 	// 执行请求
@@ -314,7 +314,7 @@ func TestRetryNotify(t *testing.T) {
 		"channel_order_no", "pay_url", "paid_at", "notified_at", "expires_at", "created_at", "updated_at",
 	}).AddRow(
 		1, "ORD_001", "test_app", "OUT_001", "wechat_native", 10000,
-		"CNY", "测试商品", "测试描述", "paid", "failed", 3,
+		"CNY", "测试商品", "测试描述", "paid", "failed_notify", 3,
 		"WX_001", "", &now, nil, now.Add(2*time.Hour), now, now,
 	)
 

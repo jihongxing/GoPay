@@ -51,7 +51,7 @@ func (p *JSAPIProvider) CreateOrder(ctx context.Context, req *channel.CreateOrde
 		return nil, fmt.Errorf("openid is required for JSAPI payment")
 	}
 
-	appID := req.ExtraData["app_id"]
+	appID := firstNonEmpty(req.ExtraData["app_id"], p.appID)
 	if appID == "" {
 		return nil, fmt.Errorf("app_id is required for JSAPI payment")
 	}

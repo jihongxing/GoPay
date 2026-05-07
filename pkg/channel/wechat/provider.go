@@ -3,6 +3,8 @@ package wechat
 import (
 	"context"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"strconv"
 
@@ -27,6 +29,7 @@ type wechatWebhookHandler interface {
 
 // Provider 微信支付 Provider
 type Provider struct {
+	appID         string
 	mchID         string
 	serialNo      string
 	apiV3Key      string
@@ -38,16 +41,18 @@ type Provider struct {
 
 // Config 微信支付配置
 type Config struct {
+	AppID          string `json:"app_id"`           // 微信 AppID
 	MchID          string `json:"mch_id"`           // 商户号
 	SerialNo       string `json:"serial_no"`        // 证书序列号
 	APIV3Key       string `json:"api_v3_key"`       // APIv3密钥
+	PrivateKey     string `json:"private_key"`      // 私钥内容（PEM）
 	PrivateKeyPath string `json:"private_key_path"` // 私钥文件路径
 }
 
 // NewProvider 创建微信支付 Provider
 func NewProvider(cfg *Config) (*Provider, error) {
 	// 加载商户私钥
-	privateKey, err := loadPrivateKey(cfg.PrivateKeyPath)
+	privateKey, err := loadPrivateKeyFromConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load private key: %w", err)
 	}
@@ -70,6 +75,7 @@ func NewProvider(cfg *Config) (*Provider, error) {
 	logger.Info("Wechat pay provider initialized successfully, mchID=%s", cfg.MchID)
 
 	return &Provider{
+		appID:         cfg.AppID,
 		mchID:         cfg.MchID,
 		serialNo:      cfg.SerialNo,
 		apiV3Key:      cfg.APIV3Key,
@@ -85,13 +91,18 @@ func (p *Provider) Name() string {
 	return "wechat_native"
 }
 
+// AppID 返回当前 Provider 绑定的应用 ID
+func (p *Provider) AppID() string {
+	return p.appID
+}
+
 // CreateOrder 创建支付订单
 func (p *Provider) CreateOrder(ctx context.Context, req *channel.CreateOrderRequest) (*channel.CreateOrderResponse, error) {
 	logger.Info("Creating wechat native order: orderID=%s, amount=%d", req.OrderID, req.Amount)
 
 	// 构建请求参数
 	nativeReq := native.PrepayRequest{
-		Appid:       core.String(req.ExtraData["app_id"]), // 微信公众号/小程序 AppID
+		Appid:       core.String(firstNonEmpty(req.ExtraData["app_id"], p.appID)), // 微信公众号/小程序 AppID
 		Mchid:       core.String(p.mchID),
 		Description: core.String(req.Subject),
 		OutTradeNo:  core.String(req.BizOrderNo),
@@ -194,6 +205,11 @@ func (p *Provider) Refund(ctx context.Context, req *channel.RefundRequest) (*cha
 
 	amount := req.Amount
 	total := req.Amount
+	if totalAmount := req.ExtraData["total_amount"]; totalAmount != "" {
+		if parsed, err := strconv.ParseInt(totalAmount, 10, 64); err == nil && parsed > 0 {
+			total = parsed
+		}
+	}
 	refundReq := refunddomestic.CreateRequest{
 		OutTradeNo:  &req.PlatformNo,
 		OutRefundNo: &req.RefundNo,
@@ -304,6 +320,47 @@ func (p *Provider) Close() error {
 // loadPrivateKey 加载商户私钥
 func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
 	return utils.LoadPrivateKeyWithPath(path)
+}
+
+func loadPrivateKeyFromConfig(cfg *Config) (*rsa.PrivateKey, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("wechat config is required")
+	}
+	if cfg.PrivateKey != "" {
+		block, _ := pem.Decode([]byte(cfg.PrivateKey))
+		if block == nil {
+			return nil, fmt.Errorf("failed to decode private key PEM")
+		}
+
+		if pkcs8Key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+			privateKey, ok := pkcs8Key.(*rsa.PrivateKey)
+			if !ok {
+				return nil, fmt.Errorf("private key is not RSA")
+			}
+			return privateKey, nil
+		}
+
+		privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse private key: %w", err)
+		}
+		return privateKey, nil
+	}
+
+	if cfg.PrivateKeyPath != "" {
+		return loadPrivateKey(cfg.PrivateKeyPath)
+	}
+
+	return nil, fmt.Errorf("private_key or private_key_path is required")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // convertTradeState 转换微信交易状态到内部状态

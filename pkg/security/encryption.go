@@ -8,7 +8,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"strings"
 )
+
+const EncryptedValuePrefix = "enc:v1:"
 
 // KeyManager 密钥管理器
 type KeyManager struct {
@@ -45,8 +48,18 @@ func (km *KeyManager) Encrypt(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
+// Seal 加密并添加版本前缀
+func (km *KeyManager) Seal(plaintext string) (string, error) {
+	ciphertext, err := km.Encrypt(plaintext)
+	if err != nil {
+		return "", err
+	}
+	return EncryptedValuePrefix + ciphertext, nil
+}
+
 // Decrypt 解密数据
 func (km *KeyManager) Decrypt(ciphertext string) (string, error) {
+	ciphertext = strings.TrimPrefix(ciphertext, EncryptedValuePrefix)
 	data, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
 		return "", err
@@ -74,6 +87,16 @@ func (km *KeyManager) Decrypt(ciphertext string) (string, error) {
 	}
 
 	return string(plaintext), nil
+}
+
+// Open 解密带前缀或不带前缀的密文
+func (km *KeyManager) Open(ciphertext string) (string, error) {
+	return km.Decrypt(ciphertext)
+}
+
+// IsEncryptedValue 判断是否为带版本前缀的加密值
+func IsEncryptedValue(value string) bool {
+	return strings.HasPrefix(value, EncryptedValuePrefix)
 }
 
 // RotateKey 密钥轮转

@@ -5,6 +5,9 @@ APP_NAME=gopay
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+ENV_FILE?=.env
+CONTAINER_CLI?=podman
+COMPOSE=$(CONTAINER_CLI) compose --env-file $(ENV_FILE)
 
 # Go 相关变量
 GOCMD=go
@@ -81,22 +84,22 @@ clean: ## 清理编译文件
 
 docker-up: ## 启动 Docker 服务（PostgreSQL）
 	@echo "$(GREEN)Starting Docker services...$(NC)"
-	docker-compose up -d
+	$(COMPOSE) up -d
 
 docker-down: ## 停止 Docker 服务
 	@echo "$(GREEN)Stopping Docker services...$(NC)"
-	docker-compose down
+	$(COMPOSE) down
 
 docker-logs: ## 查看 Docker 日志
-	docker-compose logs -f
+	$(COMPOSE) logs -f
 
 db-up: ## 启动数据库
 	@echo "$(GREEN)Starting database...$(NC)"
-	docker-compose up -d postgres
+	$(COMPOSE) up -d postgres
 
 db-down: ## 停止数据库
 	@echo "$(GREEN)Stopping database...$(NC)"
-	docker-compose stop postgres
+	$(COMPOSE) stop postgres
 
 migrate: ## 运行数据库迁移
 	@echo "$(GREEN)Running database migrations...$(NC)"

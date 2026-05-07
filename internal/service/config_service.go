@@ -248,6 +248,11 @@ func (s *ConfigService) CreateChannelConfig(ctx context.Context, config *models.
 		return err
 	}
 
+	encryptedConfig, err := encryptConfigJSON(config.Config)
+	if err != nil {
+		return fmt.Errorf("encrypt channel config failed: %w", err)
+	}
+
 	// 开启事务
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -260,15 +265,18 @@ func (s *ConfigService) CreateChannelConfig(ctx context.Context, config *models.
 		INSERT INTO channel_configs (app_id, channel, config, status)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, created_at, updated_at
-	`, config.AppID, config.Channel, config.Config, config.Status).
+	`, config.AppID, config.Channel, encryptedConfig, config.Status).
 		Scan(&config.ID, &config.CreatedAt, &config.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("insert channel config failed: %w", err)
 	}
+	config.Config = encryptedConfig
 
 	// 记录审计日志
-	newValue, _ := json.Marshal(config)
+	auditValue := *config
+	auditValue.Config = MaskSensitiveConfigJSON(config.Config)
+	newValue, _ := json.Marshal(auditValue)
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO config_audit_logs (operator, action, resource_type, resource_id, new_value, ip_address, user_agent)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -296,6 +304,14 @@ func (s *ConfigService) UpdateChannelConfig(ctx context.Context, id int64, updat
 		return err
 	}
 
+	if rawConfig, ok := updates["config"].(string); ok {
+		encryptedConfig, err := encryptConfigJSON(rawConfig)
+		if err != nil {
+			return fmt.Errorf("encrypt channel config failed: %w", err)
+		}
+		updates["config"] = encryptedConfig
+	}
+
 	// 构建更新语句
 	query := "UPDATE channel_configs SET "
 	args := []interface{}{}
@@ -319,8 +335,18 @@ func (s *ConfigService) UpdateChannelConfig(ctx context.Context, id int64, updat
 	}
 
 	// 记录审计日志
-	oldValue, _ := json.Marshal(oldConfig)
-	newValue, _ := json.Marshal(updates)
+	oldAuditConfig := *oldConfig
+	oldAuditConfig.Config = MaskSensitiveConfigJSON(oldConfig.Config)
+	oldValue, _ := json.Marshal(oldAuditConfig)
+
+	auditUpdates := make(map[string]interface{}, len(updates))
+	for key, value := range updates {
+		auditUpdates[key] = value
+	}
+	if rawConfig, ok := auditUpdates["config"].(string); ok {
+		auditUpdates["config"] = MaskSensitiveConfigJSON(rawConfig)
+	}
+	newValue, _ := json.Marshal(auditUpdates)
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO config_audit_logs (operator, action, resource_type, resource_id, old_value, new_value, ip_address, user_agent)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

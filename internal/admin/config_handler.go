@@ -307,18 +307,7 @@ func (h *ConfigHandler) ListChannelConfigs(c *gin.Context) {
 
 	// 隐藏敏感配置信息（密钥等）
 	for i := range configs {
-		var configMap map[string]interface{}
-		if err := json.Unmarshal([]byte(configs[i].Config), &configMap); err == nil {
-			// 隐藏敏感字段
-			sensitiveFields := []string{"api_v3_key", "private_key", "app_private_key", "alipay_public_key"}
-			for _, field := range sensitiveFields {
-				if _, exists := configMap[field]; exists {
-					configMap[field] = "******"
-				}
-			}
-			maskedConfig, _ := json.Marshal(configMap)
-			configs[i].Config = string(maskedConfig)
-		}
+		configs[i].Config = service.MaskSensitiveConfigJSON(configs[i].Config)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -341,18 +330,7 @@ func (h *ConfigHandler) GetChannelConfig(c *gin.Context) {
 		return
 	}
 
-	// 隐藏敏感配置信息
-	var configMap map[string]interface{}
-	if err := json.Unmarshal([]byte(config.Config), &configMap); err == nil {
-		sensitiveFields := []string{"api_v3_key", "private_key", "app_private_key", "alipay_public_key"}
-		for _, field := range sensitiveFields {
-			if _, exists := configMap[field]; exists {
-				configMap[field] = "******"
-			}
-		}
-		maskedConfig, _ := json.Marshal(configMap)
-		config.Config = string(maskedConfig)
-	}
+	config.Config = service.MaskSensitiveConfigJSON(config.Config)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    "SUCCESS",
@@ -421,7 +399,15 @@ func (h *ConfigHandler) CreateChannelConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    "SUCCESS",
 		"message": "创建成功",
-		"data":    config,
+		"data": &models.ChannelConfig{
+			ID:        config.ID,
+			AppID:     config.AppID,
+			Channel:   config.Channel,
+			Config:    service.MaskSensitiveConfigJSON(config.Config),
+			Status:    config.Status,
+			CreatedAt: config.CreatedAt,
+			UpdatedAt: config.UpdatedAt,
+		},
 	})
 }
 

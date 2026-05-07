@@ -107,6 +107,8 @@ readinessProbe:
 env:
   - name: SERVER_PORT
     value: "8080"
+  - name: SERVER_ENV
+    value: "production"
   - name: LOG_LEVEL
     value: "info"
 
@@ -114,6 +116,19 @@ env:
 envFrom:
   - secretRef:
       name: gopay-secrets
+
+secret:
+  adminApiKey: ""
+  dbUser: ""
+  dbPassword: ""
+  masterKey: ""
+
+config:
+  publicBaseURL: ""
+  dbHost: "gopay-postgresql"
+  dbPort: "5432"
+  dbName: "gopay"
+  dbSSLMode: "require"
 
 # PostgreSQL 配置
 postgresql:
